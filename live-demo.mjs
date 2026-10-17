@@ -6,7 +6,22 @@
 // The point of the last step: the gate asks "should we apply this
 // action?" and the sheet asks "what does it touch, and how sure are we
 // of that?". Neither alone is enough.
-import { derive } from process.env.GITPP_JS_SRC || "/tmp/rr2/readers/js/fold.mjs";
+import { existsSync } from "node:fs";
+
+const JS_SRC = process.env.GITPP_JS_SRC || "/tmp/rr2/readers/js/fold.mjs";
+const SPEC_PATH = process.env.GITPP_SPEC || "/tmp/v046d/SPEC.md";
+// Fail LOUDLY if a dependency is missing. A demo that silently falls back
+// to a local path is a demo that can pass for the wrong reason -- the
+// same failure mode this project has now found in four harnesses.
+if (!existsSync(JS_SRC)) {
+  console.error(`  FATAL: the JS port is not at ${JS_SRC}. Set GITPP_JS_SRC.`);
+  process.exit(1);
+}
+if (!existsSync(SPEC_PATH)) {
+  console.error(`  FATAL: the spec is not at ${SPEC_PATH}. Set GITPP_SPEC.`);
+  process.exit(1);
+}
+const { derive } = await import(JS_SRC);
 import { buildSheet, sheetConfidence, fragileCells } from "./src/sheet.mjs";
 import { buildClaimSet } from "./src/claims.mjs";
 import { scoreClaimsGuarded } from "./src/jev.mjs";
@@ -29,7 +44,7 @@ const records = [
 
 const fold = derive(records);
 const { claims } = buildClaimSet(records, fold);
-const spec = readFileSync(process.env.GITPP_SPEC || "/tmp/v046d/SPEC.md", "utf8");
+const spec = readFileSync(SPEC_PATH, "utf8");
 
 console.log("  FOLD");
 console.log(`    state     ${JSON.stringify(fold.state)}`);

@@ -37,13 +37,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: clone the reference port and the spec
+      - name: clone the reference port, a JS port, and the spec
         run: |
           git clone --depth 1 https://github.com/SuperInstance/git.pp-doctor ../gitpp-doctor
+          git clone --depth 1 https://github.com/SuperInstance/gitpp-js ../gitpp-js
           git clone --depth 1 -b spec/5-1-clarity https://github.com/SuperInstance/git.pp-spec ../gitpp-spec
       - name: run the live pipeline
         env:
           TYPESAFE_AI_TOKEN: ${{ secrets.TYPESAFE_AI_TOKEN }}
           GITPP_DOCTOR_DIR: ${{ github.workspace }}/../gitpp-doctor
+          GITPP_JS_SRC: ${{ github.workspace }}/../gitpp-js/src/gitpp.js
           GITPP_SPEC: ${{ github.workspace }}/../gitpp-spec/SPEC.md
         run: node live-demo.mjs
