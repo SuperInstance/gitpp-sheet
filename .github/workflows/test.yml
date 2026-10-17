@@ -16,7 +16,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - run: npm test
+      - name: run the unit suite
+        run: |
+          npm test 2>&1 | tee /tmp/out.txt
+          # The suite must actually RUN, not merely exit 0.
+          #
+          # This repo's own test script used a quoted glob
+          #     node --test 'test/*.test.mjs'
+          # which Node 22 expands and **Node 20 does not**. On Node 20 the
+          # runner reported
+          #     Could not find '.../test/*.test.mjs'
+          # and exited 1 -- so 22 tests were NEVER RUN, and the job
+          # reported "failure", which reads exactly like "the tests
+          # failed". A test harness that silently runs nothing is the
+          # same failure as one that compares against nothing.
+          #
+          # The script now names its files explicitly, which works on
+          # both, and this assertion catches the case where the list
+          # ever stops matching the files on disk.
+          grep -qE '^# pass [1-9][0-9]*$' /tmp/out.txt
+          test "$(grep -cE '^# pass ' /tmp/out.txt)" -ge 1
 
   # The live pipeline: a real fold, real claims, and a real judge.
   #
