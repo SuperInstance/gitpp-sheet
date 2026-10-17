@@ -124,7 +124,24 @@ export function scoreClaims(claims, state, { model = "jev-latest" } = {}) {
  * rather than receiving a number with no provenance.
  */
 export async function scoreClaimsGuarded(claims, state, opts = {}) {
-  const { detectContradiction, adjudicate } = await import("./guards.mjs");
+  const { detectContradiction, adjudicate, stateIsUsable } = await import("./guards.mjs");
+
+  // 0. THE STATE MUST BE USABLE. An empty state does not produce a low
+  //    score; it produces a confident ~0.6 answer from the judge's own
+  //    beliefs, laundered as a spec reading (measured: 0.610 on world
+  //    facts against an empty state, versus 0.038 against a real one).
+  //    A harness that failed to fetch the spec would report confident
+  //    nonsense rather than an error, and nothing downstream could tell
+  //    the difference.
+  const usable = stateIsUsable(state);
+  if (!usable.usable) {
+    return {
+      scores: new Map(), verdicts: [], blocked: true,
+      reason: `refusing to score: ${usable.reason}. An empty state makes the ` +
+              `judge answer from its own beliefs at ~0.6, which is ` +
+              `indistinguishable from a confident spec reading.`,
+    };
+  }
 
   // 1. CONTRADICTION CHECK FIRST. A judge that can see a contradiction
   //    and then answers from it anyway is the worst measured failure

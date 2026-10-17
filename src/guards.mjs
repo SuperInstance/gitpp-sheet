@@ -59,6 +59,53 @@ export const NEAR_THRESHOLD = [0.3, 0.7];
 export const CONTRADICTION_FLOOR = 0.7;   // clean 0.38, contradictory 0.96
 
 /**
+ * An EMPTY state does not produce a low score. It produces a confident
+ * answer from the judge's OWN beliefs, laundered as a spec reading.
+ *
+ * Measured over 10 world facts absent from every state:
+ *
+ *   correct state (a real document present)   0.038
+ *   unrelated state (a real document present) 0.049
+ *   EMPTY state                                0.610   <- !
+ *
+ * Paired empty-minus-unrelated: +0.561, t(9)=25.6, p<0.0001.
+ *
+ * So a judge asked about a fictional spec with no state returns ~0.6
+ * for a world fact it happens to believe, and that number looks exactly
+ * like a confident reading. The signature of an empty state is a
+ * mid-range score on a claim that should be cleanly supported or
+ * cleanly not.
+ *
+ * This is why the state-load experiment is worth running: without it,
+ * a harness that failed to fetch the spec would report confident
+ * nonsense rather than an error.
+ */
+export function stateIsUsable(state) {
+  if (state === null || state === undefined) return { usable: false, reason: "state is missing" };
+  if (typeof state === "string") {
+    return state.trim().length > 0
+      ? { usable: true }
+      : { usable: false, reason: "state is an empty string" };
+  }
+  if (typeof state === "object") {
+    const keys = Object.keys(state);
+    if (keys.length === 0) return { usable: false, reason: "state is an empty object" };
+    // A state whose every value is empty is as good as no state.
+    const nonEmpty = Object.values(state).some((v) => {
+      if (v === null || v === undefined) return false;
+      if (typeof v === "string") return v.trim().length > 0;
+      if (Array.isArray(v)) return v.length > 0;
+      if (typeof v === "object") return Object.keys(v).length > 0;
+      return true;
+    });
+    return nonEmpty
+      ? { usable: true }
+      : { usable: false, reason: "every value in the state is empty" };
+  }
+  return { usable: false, reason: `state is a ${typeof state}, which the judge does not accept` };
+}
+
+/**
  * Does the state contain a contradiction?
  *
  * This is asked SEPARATELY from the claims, because the judge will
@@ -85,6 +132,43 @@ export function needsIsolation(scores) {
     if (s >= NEAR_THRESHOLD[0] && s <= NEAR_THRESHOLD[1]) out.push(id);
   }
   return out;
+}
+
+/**
+ * A claim containing a QUANTITY is not a safe thing to gate on.
+ *
+ * Measured against this project's own SPEC.md (5,743 words):
+ *
+ *   GENUINELY FALSE numeric claims score 0.02-0.03
+ *     'at least 1e16 is encoded in integer digits'        0.02
+ *     'less than 1e-4 is encoded in integer digits'       0.03
+ *     'the encoding of a number is never scientific'       0.02
+ *
+ *   so there is NO false-positive risk from a wrong number.
+ *
+ *   But a claim whose number is IMPLIED rather than STATED lands in
+ *   the ambiguous band. The spec says '|v| >= 1e16 -> scientific',
+ *   so 'at least 1e17' is true by implication, and it scores:
+ *
+ *     1e15 (FALSE)  0.03
+ *     1e16 (stated) 0.83
+ *     1e17 (implied) 0.50   <- in the band
+ *     1e18 (implied) 0.69   <- in the band
+ *     1e30 (implied) 0.03
+ *
+ * The failure is not that numbers are mis-answered -- they are not. It
+ * is that a number the reader must INFER is scored ambiguously, and an
+ * ambiguous score that occasionally clears a gate is worse than no
+ * score. A capability probe on a different corpus found the same thing
+ * from the other side: false numeric claims drifted toward 0.2-0.5 as
+ * the document grew, ordered by numeric proximity to the text.
+ *
+ * So: a claim with a number in it is never gated on directly. It is
+ * either rephrased to use the number the document actually states, or
+ * it is routed to a human.
+ */
+export function hasQuantity(statement) {
+  return /\b\d[\d.eE+-]*\b|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|zero)\b/i.test(statement);
 }
 
 /**
@@ -117,6 +201,10 @@ export function adjudicate(scores, claimsById) {
     }
     if (isAggregateClaim(statement)) {
       out.push({ id, score, status: "unreliable", reason: "aggregate claim: counting is ambiguous in this judge" });
+      continue;
+    }
+    if (hasQuantity(statement)) {
+      out.push({ id, score, status: "unreliable", reason: "claim contains a quantity: a number the document only IMPLIES lands in the ambiguous band, so it is not gated on directly" });
       continue;
     }
     if (score >= NEAR_THRESHOLD[0] && score <= NEAR_THRESHOLD[1]) {

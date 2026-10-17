@@ -41,3 +41,35 @@ test("a missing score is not a pass", () => {
   const v = adjudicate(new Map([["x", null]]), {});
   assert.equal(v[0].status, "no-score");
 });
+
+// --- guards added after the state-load experiment ---
+
+test("an EMPTY state is refused, because it launders world knowledge", async () => {
+  const { stateIsUsable } = await import("../src/guards.mjs");
+  // Measured: a world fact against an empty state scores 0.610, against
+  // a real document 0.038. An empty state does not produce a low score;
+  // it produces a confident answer from the judge's own beliefs.
+  assert.equal(stateIsUsable({}).usable, false);
+  assert.equal(stateIsUsable({ spec: "" }).usable, false);
+  assert.equal(stateIsUsable({ spec: "   " }).usable, false);
+  assert.equal(stateIsUsable({ spec: {}, other: [] }).usable, false);
+  assert.equal(stateIsUsable(null).usable, false);
+  assert.equal(stateIsUsable(undefined).usable, false);
+  assert.equal(stateIsUsable({ spec: "real text" }).usable, true);
+  assert.equal(stateIsUsable({ spec: { a: 1 } }).usable, true);
+});
+
+test("a claim containing a quantity is not gated on", async () => {
+  const { hasQuantity } = await import("../src/guards.mjs");
+  assert.equal(hasQuantity("A number whose absolute value is at least 1e16 is scientific."), true);
+  assert.equal(hasQuantity("The threshold is one hundred."), true);
+  assert.equal(hasQuantity("A record of kind override outranks a record of kind witness."), false);
+});
+
+test("a quantity claim is marked unreliable even when it scores high", async () => {
+  const { adjudicate } = await import("../src/guards.mjs");
+  const v = adjudicate(new Map([["q", 0.83]]), {
+    q: { statement: "A number whose absolute value is at least 1e16 is encoded in scientific notation." },
+  });
+  assert.equal(v[0].status, "unreliable");
+});

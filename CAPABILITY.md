@@ -124,3 +124,98 @@ positive statement about the spec ("a record of kind X outranks a
 record of kind Y"), never a question, never a negation, never hedged.
 The claim set is the interface, and its shape is what makes the judge's
 output usable.
+
+---
+
+# Experiment 2 — is the state load-bearing?
+
+**Yes, decisively.** 550 API calls, two independently written documents,
+20 true claims scored under each state.
+
+| state | mean score of a true claim | sd |
+|---|---|---|
+| correct document | **0.9895** | 0.0022 |
+| unrelated document | **0.0170** | 0.0073 |
+| **empty `{}`** | **0.1550** | 0.0385 |
+
+- correct − unrelated: **Δ = +0.9725**, 95% CI [+0.9690, +0.9755], t(19)=607, p≈3e-42
+- AUC separating true from false claims: **1.000**
+- Run-to-run spread on saturated cells: **0.000** — effectively
+  deterministic, no averaging needed
+
+**So the spec-reader use is sound. No finding in the reading-room
+project is void on the grounds that the state was decorative.**
+
+## 7. An EMPTY state does not produce a low score — it produces a confident wrong one
+
+This is the most dangerous measured property, and it is the one the
+project's own failure modes would have hit.
+
+| state | score of a WORLD fact absent from it |
+|---|---|
+| correct document | **0.038** |
+| unrelated document | 0.049 |
+| **empty `{}`** | **0.610** |
+
+Paired empty − unrelated: **Δ = +0.561**, t(9)=25.6, p<0.0001.
+
+Jev consults world knowledge **only when the state is empty**. A harness
+that failed to fetch the spec would therefore report *confident
+nonsense at ~0.6* — indistinguishable from a confident spec reading —
+rather than an error. The signature of an empty state is a mid-range
+score on a claim that should be cleanly supported or cleanly not.
+
+**Guard:** `stateIsUsable()` refuses `{}`, `""`, `{a: null}`, and
+missing state, before any claim is scored. A state-load failure now
+produces an error rather than a plausible number.
+
+## 8. Numbers: no false positives, but implied numbers are ambiguous
+
+Measured against this project's own SPEC.md (5,743 words, 360 numeric
+tokens):
+
+| claim | score |
+|---|---|
+| "at least 1e16 is encoded in **integer digits**" (flatly false) | **0.02** |
+| "less than 1e-4 is encoded in integer digits" (false) | 0.03 |
+| "the encoding of a number is never scientific" (false) | 0.02 |
+| "at least 1e16 is encoded in scientific notation" (stated) | 0.83 |
+| "at least 1e15 is encoded in scientific notation" (false) | 0.03 |
+
+**Wrong numbers do not produce false positives.** The risk is narrower:
+a number the document only **implies** lands in the ambiguous band
+(`1e17` → 0.50, `1e18` → 0.69), because the reader must infer it. A
+separate capability probe found the same thing from the other side: in
+long documents, false numeric claims drift toward 0.2–0.5 **ordered by
+numeric proximity to the text's number** (300 kg → 0.49, 500 → 0.52,
+1000 → 0.38, 1500 → 0.22).
+
+**Guard:** a claim containing a quantity is never gated on directly.
+It is either rephrased to use the number the document states, or routed
+to a human.
+
+## 9. Operating limits, measured
+
+| | |
+|---|---|
+| context ceiling | works at 30,014 words, **fails at 35,014** (`max_tokens_exceeded`). **Our spec is 5,743 words — 5× under the limit.** |
+| burial depth | irrelevant. Facts at 0% / 25% / 50% / 75% / 100% depth of a long document all score 0.98–0.99 |
+| state shape | irrelevant. dict, single key, nested multikey, bare string all score 0.99 |
+| invalid state | `null` / omitted → clean HTTP 422; `0` / `true` → 422 (`string_type`) |
+| garbage state | degrades safely. Word salad, wrong-typed dicts → 0.01–0.02 on both true and false claims |
+| unreliability | 8 non-scoring responses in 550 calls, **all intentional probes**. Zero unexplained failures |
+
+## 10. Two measurement traps, recorded because they nearly produced false findings
+
+**Near-duplicate documents manufacture false positives.** A "false"
+claim scored 0.82 because the *unrelated* control document happened to
+contain the same person name. That is evidence the judge reads the
+state — but it means **unrelated distractors must be name-disjoint**,
+or a control will manufacture positives.
+
+**A long document can hide a falsified control.** One control column
+was invalid for n≥9 because the control claim was not actually present
+in the generated filler. The run was discarded rather than reported.
+
+Both of those are the same lesson the whole project keeps learning: a
+control that was not verified to be a control is not a control.
