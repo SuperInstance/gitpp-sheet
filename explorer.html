@@ -1,0 +1,2100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gitpp-sheet explorer</title>
+<style>
+/* ------------------------------------------------------------------ *
+ * Dark theme, matching src/graph.mjs: bg #0f1115, the four class
+ * colours, and the #f5a623 amber that marks a fragile cell.
+ * ------------------------------------------------------------------ */
+:root{
+  --bg:#0f1115; --panel:#151922; --panel2:#1a1f29; --sunk:#0c0e12;
+  --line:#262c37; --line2:#333b48;
+  --text:#e6e9ef; --muted:#8b93a1; --dim:#5d6570;
+  --override:#e05252; --task:#4a90d9; --witness:#7b8794; --unclassifiable:#b06fd0;
+  --amber:#f5a623; --green:#3fb950; --red:#f0554b;
+  --mono:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+  font:13px/1.45 var(--mono);-webkit-font-smoothing:antialiased}
+body{padding:0 0 28px}
+h1,h2,h3{margin:0;font-weight:600}
+button{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);
+  border-radius:4px;padding:3px 9px;cursor:pointer}
+button:hover{border-color:var(--line2);background:#202632}
+button.on{border-color:var(--task);color:#cfe4ff;background:#1a2634}
+a{color:var(--task)}
+
+/* ---------- top bar ---------- */
+.top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:16px;
+  padding:9px 14px;background:#0d0f13;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:9px}
+.brand h1{font-size:14px;letter-spacing:.2px}
+.brand .sub{color:var(--dim);font-weight:400}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--task);
+  box-shadow:0 0 0 3px #4a90d922}
+.stats{display:flex;gap:7px;flex-wrap:wrap;margin-left:auto}
+.stat{border:1px solid var(--line);border-radius:4px;padding:2px 8px;background:var(--panel);
+  color:var(--muted);white-space:nowrap}
+.stat b{color:var(--text);font-weight:600}
+.stat.amber{border-color:#5a4413;color:#f0c07a}
+.stat.amber b{color:var(--amber)}
+.stat.red{border-color:#5c2a26;color:#f0a49d}
+.stat.red b{color:var(--red)}
+.stat.green{border-color:#24512c;color:#9dd7a8}
+.stat.green b{color:var(--green)}
+.top-actions{display:flex;gap:6px}
+
+/* ---------- banner ---------- */
+.banner{margin:10px 14px 0;padding:9px 12px;border-radius:5px;font-size:12.5px;
+  white-space:pre-wrap;word-break:break-word}
+.banner.err{background:#2a1416;border:1px solid #6b2b2b;color:#ffb9b2}
+.banner.ok{background:#132018;border:1px solid #2c5c37;color:#a9dcb6}
+.banner .bh{font-weight:600;letter-spacing:.3px;text-transform:uppercase;font-size:10.5px;
+  display:block;margin-bottom:3px;opacity:.85}
+.banner code{background:#00000055;padding:1px 4px;border-radius:3px}
+
+/* ---------- layout ---------- */
+.grid{display:grid;gap:12px;padding:12px 14px 0;
+  grid-template-columns:minmax(0,1fr) minmax(0,1.22fr);
+  grid-template-areas:"graph sheet" "sel right";align-items:start}
+#p-graph{grid-area:graph} #p-sheet{grid-area:sheet}
+#p-sel{grid-area:sel}   #p-right{grid-area:right}
+.stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+@media (max-width:1180px){
+  .grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"graph" "sheet" "right" "sel"}
+}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;min-width:0;overflow:hidden}
+.panel>h2{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:1.1px;
+  text-transform:uppercase;color:var(--muted);padding:7px 11px;border-bottom:1px solid var(--line);
+  background:#12161e;flex-wrap:wrap}
+.panel>h2 .n{color:var(--dim);font-weight:600}
+.panel>h2 .hint{text-transform:none;letter-spacing:0;color:var(--dim);font-weight:400;font-size:11px}
+.panel>h2 .right{margin-left:auto;display:flex;gap:5px;align-items:center}
+.body{padding:10px 11px}
+.body.tight{padding:0}
+.empty{color:var(--dim);padding:14px 11px;font-size:12px}
+
+/* ---------- confidence bar ---------- */
+.confcell{display:flex;align-items:center;gap:7px}
+.confcell .bar{flex:1 1 auto;min-width:84px}
+.bar{position:relative;height:12px;background:var(--sunk);border:1px solid var(--line);
+  border-radius:3px;overflow:hidden;min-width:74px}
+.bar>i.fill{display:block;height:100%;border-radius:2px 0 0 2px;
+  background:var(--green);transition:width .12s linear}
+.bar.c-hi>i.fill{background:var(--green)}
+.bar.c-mid>i.fill{background:var(--amber)}
+.bar.c-lo>i.fill{background:var(--red)}
+.bar.c-lo{background:repeating-linear-gradient(135deg,#1b1013 0 5px,#241416 5px 10px)}
+.bar>i.tick{position:absolute;top:0;bottom:0;width:1px;background:var(--dim);opacity:.85}
+.bar>i.tick.gate{background:#5d6570}
+.bar>i.tick.frag{background:var(--amber);opacity:.65}
+.bar .ticks{position:absolute;top:0;bottom:0;left:0;right:0}
+.barnum{font-size:11px;color:var(--muted);margin-left:6px;white-space:nowrap}
+.barnum b{color:var(--text)}
+.barnum.lo b{color:var(--red)} .barnum.mid b{color:var(--amber)} .barnum.hi b{color:var(--green)}
+
+/* ---------- sheet table ---------- */
+table{width:100%;border-collapse:collapse}
+thead th{font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--dim);
+  text-align:left;font-weight:600;padding:6px 9px;border-bottom:1px solid var(--line);
+  background:#12161e;position:sticky;top:0}
+tbody td{padding:7px 9px;border-bottom:1px solid #1e232d;vertical-align:top}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:#1a1f2a}
+tbody tr.sel{background:#1d2735;box-shadow:inset 2px 0 0 var(--task)}
+tbody tr.hit{box-shadow:inset 2px 0 0 var(--amber);background:#1d1d22}
+tbody tr.hit.sel{box-shadow:inset 2px 0 0 var(--task)}
+tbody tr.frag td:first-child{box-shadow:inset 2px 0 0 var(--amber)}
+tbody tr.lo{background:#1a1114}
+tbody tr.lo.sel,tbody tr.lo.hit{background:#241518}
+tbody tr.frag.hit td:first-child{box-shadow:inset 2px 0 0 var(--amber)}
+.val{color:var(--text);font-weight:600;word-break:break-word}
+.val .from{color:var(--dim);font-weight:400}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:3px;padding:0 5px;
+  border:1px solid currentColor;font-size:11px;white-space:nowrap}
+.chip .sw{width:7px;height:7px;border-radius:50%;background:currentColor;flex:none}
+.tag{display:inline-block;border-radius:3px;padding:0 5px;font-size:10px;letter-spacing:.4px;
+  border:1px solid currentColor}
+.tag.amber{color:var(--amber)} .tag.red{color:var(--red)} .tag.green{color:var(--green)}
+.tag.violet{color:var(--unclassifiable)} .tag.dim{color:var(--dim)} .tag.blue{color:var(--task)}
+.dec{display:flex;flex-direction:column;gap:3px}
+.decline{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);flex-wrap:wrap}
+.decline .st{font-size:9px;border:1px solid currentColor;border-radius:3px;padding:0 4px}
+.decline .subj{color:var(--text)}
+.decline .weak{color:var(--amber)}
+.decline .weak::after{content:" ← weakest link";font-size:10px;color:var(--amber)}
+.muted{color:var(--muted)} .dim{color:var(--dim)}
+.none{color:var(--dim);font-style:italic}
+.pill{font-size:10px;color:var(--dim);border:1px dashed var(--line2);border-radius:3px;padding:0 4px}
+
+/* ---------- graph ---------- */
+.graphwrap{padding:6px 8px 2px;background:#0f1115;overflow-x:auto;scroll-margin-top:70px}
+.graphwrap svg{display:block;width:100%;height:auto}
+.graphwrap svg circle{cursor:pointer}
+.graphwrap svg text{user-select:none;pointer-events:none}
+.graphwrap svg circle,.graphwrap svg line{pointer-events:visiblePainted}
+.legend-note{display:flex;gap:10px;flex-wrap:wrap;padding:5px 11px 9px;color:var(--dim);font-size:10.5px;
+  border-top:1px solid var(--line)}
+.readout{padding:6px 11px;border-top:1px solid var(--line);color:var(--muted);font-size:11.5px;
+  min-height:28px;background:#12161e}
+.readout b{color:var(--text)}
+
+/* ---------- selection panel ---------- */
+.rec-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:8px}
+.rec-head .id{font-size:15px;font-weight:600}
+.rec-head .kids{color:var(--dim);font-size:11px}
+.sec{margin-top:11px}
+.sec>.h{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--dim);
+  margin-bottom:5px;display:flex;gap:7px;align-items:baseline}
+.sec>.h .n{color:var(--muted)}
+.mini{width:100%;border-collapse:collapse}
+.mini td{padding:4px 7px;border-bottom:1px solid #1e232d;font-size:12px}
+.mini tr:last-child td{border-bottom:none}
+.mini tr{cursor:default}
+.mini tr:hover{background:#1a1f2a}
+.mini .k{color:var(--muted);white-space:nowrap}
+.eff{border-radius:4px;border:1px solid;padding:7px 9px;margin-bottom:7px}
+.eff.v{border-color:#5c2a26;background:#1e1315}
+.eff.c{border-color:#4a3a12;background:#1d1a11}
+.eff.u{border-color:var(--line);background:#12161e}
+.eff .eh{font-size:10px;letter-spacing:.9px;text-transform:uppercase;margin-bottom:5px;display:flex;gap:7px}
+.eff.v .eh{color:var(--red)} .eff.c .eh{color:var(--amber)} .eff.u .eh{color:var(--dim)}
+.eff ul{margin:0;padding-left:15px}
+.eff li{margin:2px 0}
+.foot{color:var(--dim);font-size:10.5px;margin-top:8px;padding-top:7px;border-top:1px solid var(--line);line-height:1.5}
+
+/* ---------- trigger ---------- */
+.verdict{display:flex;align-items:center;gap:10px;margin-bottom:9px;flex-wrap:wrap}
+.verdict .big{font-size:17px;font-weight:700;letter-spacing:1.2px;padding:3px 11px;border-radius:4px;
+  border:1px solid}
+.verdict .big.apply{color:var(--green);border-color:var(--green);background:#12241a}
+.verdict .big.review{color:var(--amber);border-color:var(--amber);background:#241d0f}
+.verdict .big.block{color:var(--red);border-color:var(--red);background:#261416}
+.verdict .exp{color:var(--muted);font-size:11.5px;flex:1;min-width:190px}
+.sl{position:relative;margin:4px 0 2px}
+.sl input[type=range]{width:100%;-webkit-appearance:none;appearance:none;background:transparent;height:20px;margin:0}
+.sl input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:4px;
+  background:linear-gradient(90deg,#2a1214 0%,#2a1214 var(--lo,50%),#12241a var(--lo,50%),#12241a 100%)}
+.sl input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:19px;
+  border-radius:3px;background:var(--text);border:1px solid #000;margin-top:-5.5px;cursor:pointer}
+.sl input[type=range]::-moz-range-track{height:8px;border-radius:4px;background:#1c232d}
+.sl input[type=range]::-moz-range-thumb{width:12px;height:18px;border-radius:3px;background:var(--text);border:1px solid #000}
+.slmark{position:relative;height:26px;margin-top:-1px}
+.slmark i{position:absolute;top:0;transform:translateX(-50%);text-align:center;font-size:9.5px;
+  color:var(--dim);white-space:nowrap}
+.slmark i::before{content:"";display:block;width:1px;height:8px;background:var(--line2);margin:0 auto 1px}
+.slmark i.gate{color:var(--muted)}
+.slmark i.req{color:var(--amber)} .slmark i.req::before{background:var(--amber)}
+.slmark i.cur{color:var(--text)} .slmark i.cur::before{background:var(--text);height:10px}
+.slnums{display:flex;justify-content:space-between;color:var(--dim);font-size:9.5px;margin-top:-2px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin-top:9px;font-size:12px}
+.kv .k{color:var(--muted);white-space:nowrap}
+.why{margin-top:9px;padding:8px 10px;background:var(--sunk);border:1px solid var(--line);
+  border-left:2px solid var(--task);border-radius:4px;font-size:12px;color:#cdd4df;line-height:1.55}
+.ladder{margin-top:10px;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.ladder div{display:flex;gap:8px;padding:4px 9px;font-size:11.5px;border-bottom:1px solid var(--line)}
+.ladder div:last-child{border-bottom:none}
+.ladder .sw{width:8px;height:8px;border-radius:2px;flex:none;margin-top:4px}
+.ladder .on{background:#ffffff0d}
+.ladder .off{opacity:.45}
+
+/* ---------- verdicts ---------- */
+.vrow{display:grid;grid-template-columns:auto 1fr auto;gap:4px 9px;padding:7px 9px;
+  border-bottom:1px solid #1e232d;cursor:pointer;align-items:start}
+.vrow:hover{background:#1a1f2a}
+.vrow.on{background:#1d2735}
+.vrow .id{font-size:11.5px;color:var(--muted);grid-column:1/3;word-break:break-all}
+.vrow .id b{color:var(--text);font-weight:600}
+.vrow .st{font-size:10px;letter-spacing:.6px;text-transform:uppercase;border:1px solid currentColor;
+  border-radius:3px;padding:0 5px;white-space:nowrap}
+.vrow .stmt{grid-column:1/3;color:#b9c1cd;font-size:11.5px;line-height:1.5}
+.vrow .rsn{grid-column:1/4;color:var(--dim);font-size:11px}
+.vrow .sc{grid-column:1/3;display:flex;align-items:center;gap:8px}
+.st.supported{color:var(--green)} .st.not-supported{color:var(--dim)}
+.st.needs-isolation{color:var(--amber)} .st.unreliable{color:var(--red)}
+.st.no-score{color:var(--dim)}
+.vrow.k-supported{border-left:2px solid #1f3d26}
+.vrow.k-not-supported{border-left:2px solid #242a34;opacity:.72}
+.vrow.k-needs-isolation{border-left:2px solid var(--amber);background:#1c1a12}
+.vrow.k-unreliable{border-left:2px solid var(--red);background:#1e1416}
+.vrow.k-unreliable .sc .bar{outline:1px dashed var(--red);outline-offset:1px}
+.vrow.k-unreliable .sc .barnum{text-decoration:line-through}
+.vrow.k-needs-isolation .bar>i.fill{background:repeating-linear-gradient(90deg,var(--amber) 0 4px,#241d0f 4px 8px)}
+.vkey{display:flex;gap:9px;flex-wrap:wrap;padding:6px 11px;border-top:1px solid var(--line);
+  background:#12161e;color:var(--dim);font-size:10.5px}
+.vkey b{font-weight:600}
+.sk.s-supported{color:var(--green)} .sk.s-not-supported{color:var(--dim)}
+.sk.s-needs-isolation{color:var(--amber)} .sk.s-unreliable{color:var(--red)} .sk.s-no-score{color:var(--dim)}
+
+/* ---------- cell detail ---------- */
+.detail{margin:0;padding:9px 11px;background:#12161e;border-top:1px solid var(--line)}
+.detail .dh{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap;margin-bottom:7px}
+.detail .dh .k{font-size:13px;font-weight:600}
+.claim{border:1px solid var(--line);border-radius:4px;padding:7px 9px;margin-bottom:6px;background:var(--panel2)}
+.claim.supported{border-left:2px solid #1f3d26}
+.claim.not-supported{border-left:2px solid #333a46;opacity:.75}
+.claim.needs-isolation{border-left:2px solid var(--amber)}
+.claim.unreliable{border-left:2px solid var(--red)}
+.claim .ch{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
+.claim .clause{color:var(--dim);font-size:10.5px}
+.claim .cst{color:#b9c1cd;font-size:11.5px;line-height:1.5}
+
+/* ---------- payload drawer ---------- */
+.payload{position:fixed;inset:auto 0 0 0;z-index:40;height:min(52vh,460px);display:flex;flex-direction:column;
+  background:#0d0f13;border-top:1px solid var(--line2);box-shadow:0 -12px 30px #00000099}
+.payload[hidden]{display:none}
+.payload .ph{display:flex;align-items:center;gap:10px;padding:7px 14px;border-bottom:1px solid var(--line);
+  color:var(--muted);font-size:11px}
+.payload .ph .x{margin-left:auto}
+.payload textarea{flex:1;resize:none;background:#08090c;color:#cbd3de;border:none;outline:none;
+  padding:10px 14px;font:12px/1.5 var(--mono);white-space:pre;overflow:auto}
+.sronly{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand"><span class="dot"></span>
+    <h1>gitpp-sheet <span class="sub">/ explorer</span></h1></div>
+  <div class="stats" id="stats"></div>
+  <div class="top-actions">
+    <button id="btnFormat" title="pretty-print the payload">format</button>
+    <button id="btnText" title="copy renderText() of the current sheet">copy text</button>
+    <button id="btnPayload" title="show/hide the JSON payload">payload</button>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main class="grid">
+  <section class="panel" id="p-graph">
+    <h2><span class="n">1</span> the graph <span class="hint">click a record to select it</span></h2>
+    <div class="graphwrap" id="graphwrap"></div>
+    <div class="legend-note">
+      <span>node = class</span><span>edge = parent &rarr; child</span>
+      <span>dashed edge = binds no cell</span><span>amber halo = set a fragile cell</span>
+      <span>% under node = confidence of the first cell it set</span>
+    </div>
+    <div class="readout" id="graphreadout">hover a node &middot; click to select</div>
+  </section>
+
+  <section class="panel" id="p-sheet">
+    <h2><span class="n">2</span> the sheet <span class="hint" id="sheetcount"></span>
+      <span class="right">
+        <button class="sortbtn on" data-sort="weak">weakest</button>
+        <button class="sortbtn" data-sort="key">key</button>
+        <button class="sortbtn" data-sort="strong">strongest</button>
+      </span></h2>
+    <div class="body tight" id="sheetbody"></div>
+    <div id="celldetail"></div>
+  </section>
+
+  <section class="panel" id="p-sel">
+    <h2><span class="n">3</span> selection <span class="hint" id="selwho">no record selected</span></h2>
+    <div class="body" id="selbody">
+      <div class="empty">Click a node in the graph, or a row in the sheet, to see what a record touched
+        and what would change if its class were different.</div>
+    </div>
+  </section>
+
+  <div class="stack" id="p-right">
+    <section class="panel" id="p-trig">
+      <h2><span class="n">4</span> trigger <span class="hint">decide() on the selected record</span></h2>
+      <div class="body" id="trigbody"></div>
+    </section>
+    <section class="panel" id="p-verd">
+      <h2><span class="n">5</span> verdicts <span class="hint" id="verdcount"></span></h2>
+      <div class="body tight" id="verdbody"></div>
+    </section>
+  </div>
+</main>
+
+<footer class="payload" id="payload" hidden>
+  <div class="ph"><span>payload &mdash; paste <code>{records, fold, sheet}</code> or
+    <code>{records, fold, scores}</code>. Renders on change. Never throws; bad input shows an error above.
+    <span class="x"><button id="btnClose">close</button></span></span></div>
+  <textarea id="ta" spellcheck="false" aria-label="JSON payload"></textarea>
+</footer>
+
+<script>
+"use strict";
+/* ================================================================== *
+ * PART 1 -- THE LIBRARY, INLINED.
+ *
+ * This file is a CONSUMER of gitpp-sheet. src/ is not modified and is
+ * not imported; the functions below are copied verbatim from the
+ * library so that this page is a single self-contained file with no
+ * build step and no server. Each block names its origin file.
+ *
+ *   buildSheet / affectedCells / propagateClassChange /
+ *   sheetConfidence / fragileCells ............. src/sheet.mjs
+ *   extractClaims / extractPropertyClaims /
+ *   buildClaimSet ............................. src/claims.mjs
+ *   renderGraph / renderText / CLASS_COLOR / esc  src/graph.mjs
+ *   regionConfidence / decide / effectsOf ...... src/triggers.mjs
+ *   GATE / NEAR_THRESHOLD / stateIsUsable /
+ *   hasQuantity / isAggregateClaim / adjudicate  src/guards.mjs
+ *
+ * Only JSDoc has been trimmed. No logic has been changed, and
+ * deliberately so: the point of the explorer is to show what the
+ * library actually computes, including the parts that are surprising.
+ * ================================================================== */
+
+/* --------------------------------------------------------------- *
+ * FROM src/sheet.mjs
+ * --------------------------------------------------------------- */
+function buildSheet(fold, claims = {}, priors = {}) {
+  const { state = {}, setters = {}, conflicts = [] } = fold;
+  const cells = [];
+
+  for (const [key, value] of Object.entries(state)) {
+    const conflict = conflicts.find((c) => c.key === key) ?? null;
+    const winner = conflict?.winner ?? setters[key] ?? null;
+    const losers = conflict?.losers ?? [];
+
+    const decisions = [];
+    for (const loser of losers) {
+      const c = claims[`${key}:${winner}:${loser}`];
+      decisions.push({
+        kind: "class-precedence",
+        subject: `${winner} > ${loser}`,
+        confidence: c ?? 1.0,        // absent claim => unchallenged
+        detail: `for key "${key}"`,
+      });
+    }
+    if (winner !== null) {
+      const p = priors[winner];
+      if (p !== undefined) {
+        decisions.push({
+          kind: "record-properties",
+          subject: winner,
+          confidence: p,
+          detail: `class and parentage of "${winner}"`,
+        });
+      }
+    }
+
+    const confidence = decisions.length
+      ? Math.min(...decisions.map((d) => d.confidence))
+      : 1.0;
+
+    const dependsOn = [winner, ...losers].filter((x) => x !== null);
+
+    cells.push({
+      key,
+      value,
+      setter: winner,
+      confidence,
+      decisions,
+      dependsOn,
+      contested: losers.length > 0,
+      fragile: confidence < 0.75,
+    });
+  }
+
+  cells.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  return {
+    cells,
+    byKey: Object.fromEntries(cells.map((c) => [c.key, c])),
+  };
+}
+
+function affectedCells(sheet, recordId) {
+  return sheet.cells.filter((c) => c.dependsOn.includes(recordId));
+}
+
+function propagateClassChange(sheet, recordId, newClass) {
+  const effects = [];
+  for (const c of sheet.cells) {
+    if (!c.dependsOn.includes(recordId)) continue;
+    const decision = c.decisions.find(
+      (d) => d.kind === "class-precedence" && d.subject.startsWith(recordId),
+    );
+    effects.push({
+      key: c.key,
+      effect: decision ? "value-changes" : "certainty-changes",
+      currentValue: c.value,
+      currentSetter: c.setter,
+      currentConfidence: c.confidence,
+      contested: c.contested,
+    });
+  }
+  return effects;
+}
+
+function sheetConfidence(sheet) {
+  if (!sheet.cells.length) return 1.0;
+  return Math.min(...sheet.cells.map((c) => c.confidence));
+}
+
+function fragileCells(sheet) {
+  return sheet.cells
+    .filter((c) => c.fragile)
+    .sort((a, b) => a.confidence - b.confidence);
+}
+
+/* --------------------------------------------------------------- *
+ * FROM src/claims.mjs
+ * --------------------------------------------------------------- */
+function extractClaims(records, fold) {
+  const byId = new Map(records.map((r) => [r.id, r]));
+  const claims = [];
+  for (const c of fold.conflicts ?? []) {
+    const winner = byId.get(c.winner);
+    for (const loser of c.losers ?? []) {
+      const l = byId.get(loser);
+      const sameClass = (winner?.kind ?? null) === (l?.kind ?? null);
+      claims.push({
+        id: `${c.key}:${c.winner}:${loser}`,
+        key: c.key,
+        winner: c.winner,
+        loser,
+        winnerKind: winner?.kind ?? null,
+        loserKind: l?.kind ?? null,
+        decision: sameClass ? "tie-break" : "class-precedence",
+        statement: sameClass
+          ? `In the git.pp specification, when two records of the same class ` +
+            `contest the same key, the one that is a DESCENDANT of the other ` +
+            `wins; and if neither descends from the other, the one that comes ` +
+            `first in topological order wins.`
+          : `In the git.pp specification, a record of kind "${winner?.kind}" ` +
+            `outranks a record of kind "${l?.kind}" for the same key.`,
+        clause: sameClass
+          ? "SPEC 5.2 step 3: if the classes are equal, a descendant wins; " +
+            "and 5.4: ties are broken by smallest-id-first"
+          : "SPEC 5.1: class precedence is absolute -- override > task > witness",
+      });
+    }
+  }
+  return claims;
+}
+
+function extractPropertyClaims(records, fold) {
+  const byId = new Map(records.map((r) => [r.id, r]));
+  const orphans = new Set(fold.orphans ?? []);
+  const claims = [];
+  for (const r of records) {
+    const unclassifiable = r.kind === null || r.kind === undefined ||
+      !(r.kind in { override: 1, task: 1, witness: 1 });
+    if (!unclassifiable) continue;
+    claims.push({
+      id: `prop:${r.id}:kind`,
+      record: r.id,
+      kind: "class",
+      statement:
+        `A record whose kind is ${r.kind === null || r.kind === undefined ? "null" : `"${r.kind}"`} ` +
+        `has no class and ranks lowest, below witness.`,
+      clause: "SPEC 5.1: class precedence is absolute; an unclassifiable record ranks lowest",
+    });
+    if (orphans.has(r.id)) {
+      claims.push({
+        id: `prop:${r.id}:orphan`,
+        record: r.id,
+        kind: "orphan",
+        statement:
+          `In the git.pp specification, a record whose own parent id is absent ` +
+          `from the record set is an orphan and is excluded from the fold.`,
+        clause: "SPEC 5.5: a record is an orphan if any of its parents is not in the applied set",
+      });
+    }
+  }
+  return claims;
+}
+
+function buildClaimSet(records, fold) {
+  const claims = [...extractClaims(records, fold), ...extractPropertyClaims(records, fold)];
+  const byClause = new Map();
+  for (const c of claims) {
+    if (!byClause.has(c.clause)) byClause.set(c.clause, []);
+    byClause.get(c.clause).push(c);
+  }
+  return { claims, byClause };
+}
+
+/* --------------------------------------------------------------- *
+ * FROM src/graph.mjs
+ * --------------------------------------------------------------- */
+const CLASS_COLOR = {
+  override: "#e05252",
+  task: "#4a90d9",
+  witness: "#7b8794",
+  unclassifiable: "#b06fd0",
+};
+
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function renderGraph(sheet, records, opts = {}) {
+  const width = opts.width ?? 1000;
+  const height = opts.height ?? 560;
+  const byId = new Map(records.map((r) => [r.id, r]));
+
+  const depth = new Map();
+  const computeDepth = (id, seen = new Set()) => {
+    if (depth.has(id)) return depth.get(id);
+    if (seen.has(id)) return 0;                       // cycle
+    seen.add(id);
+    const r = byId.get(id);
+    const ps = (r?.parents ?? []).filter((p) => byId.has(p));
+    const d = ps.length ? 1 + Math.max(...ps.map((p) => computeDepth(p, seen))) : 0;
+    depth.set(id, d);
+    return d;
+  };
+  for (const r of records) computeDepth(r.id);
+
+  const layers = new Map();
+  for (const r of records) {
+    const d = depth.get(r.id) ?? 0;
+    if (!layers.has(d)) layers.set(d, []);
+    layers.get(d).push(r);
+  }
+
+  const pos = new Map();
+  const layerH = 90;
+  for (const [d, rs] of [...layers.entries()].sort((a, b) => a[0] - b[0])) {
+    const w = (width - 120) / rs.length;
+    rs.forEach((r, i) => {
+      pos.set(r.id, { x: 60 + i * w + w / 2, y: 60 + d * layerH });
+    });
+  }
+
+  const cellFor = (id) => sheet.cells.find((c) => c.setter === id);
+  const parts = [];
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="ui-monospace, Menlo, monospace">`);
+  parts.push(`<rect width="${width}" height="${height}" fill="#0f1115"/>`);
+
+  // Edges first, so nodes sit on top.
+  for (const r of records) {
+    const to = pos.get(r.id);
+    for (const p of r.parents ?? []) {
+      const from = pos.get(p);
+      if (!from || !to) continue;
+      const broken = !sheet.cells.some((c) => c.dependsOn.includes(r.id) && c.dependsOn.includes(p));
+      parts.push(`<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"
+        stroke="${broken ? "#3a3f4b" : "#4a5160"}" stroke-width="1.2" ${broken ? 'stroke-dasharray="3 3"' : ""}/>`);
+    }
+  }
+
+  // Nodes.
+  for (const r of records) {
+    const p = pos.get(r.id);
+    if (!p) continue;
+    const cell = cellFor(r.id);
+    const kind = r.kind && CLASS_COLOR[r.kind] ? r.kind : "unclassifiable";
+    const fill = CLASS_COLOR[kind];
+    const conf = cell?.confidence ?? 1.0;
+    const halo = cell && cell.fragile
+      ? `<circle cx="${p.x}" cy="${p.y}" r="26" fill="none" stroke="#f5a623" stroke-width="1.6" stroke-dasharray="4 3"/>`
+      : "";
+    const label = esc(r.id.length > 14 ? r.id.slice(0, 13) + "…" : r.id);
+    const confText = cell ? `${(conf * 100).toFixed(0)}%` : "";
+    parts.push(`${halo}`);
+    parts.push(`<circle cx="${p.x}" cy="${p.y}" r="17" fill="${fill}" fill-opacity="0.82" stroke="#0f1115" stroke-width="2"/>`);
+    parts.push(`<text x="${p.x}" y="${p.y + 4}" font-size="10" fill="#fff" text-anchor="middle">${label}</text>`);
+    if (confText) {
+      parts.push(`<text x="${p.x}" y="${p.y + 32}" font-size="9" fill="${cell.fragile ? "#f5a623" : "#8b93a1"}" text-anchor="middle">${confText}</text>`);
+    }
+  }
+
+  // Legend.
+  const legend = [["override", "override"], ["task", "task"], ["witness", "witness"], ["unclassifiable", "unclassifiable"]];
+  let lx = 60;
+  for (const [label] of legend) {
+    parts.push(`<circle cx="${lx}" cy="${height - 24}" r="7" fill="${CLASS_COLOR[label]}" fill-opacity="0.82"/>`);
+    parts.push(`<text x="${lx + 13}" y="${height - 20}" font-size="10" fill="#8b93a1">${label}</text>`);
+    lx += 30 + label.length * 6.5;
+  }
+  parts.push(`<circle cx="${lx + 20}" cy="${height - 24}" r="9" fill="none" stroke="#f5a623" stroke-width="1.4" stroke-dasharray="3 2"/>`);
+  parts.push(`<text x="${lx + 35}" y="${height - 20}" font-size="10" fill="#8b93a1">set a fragile cell</text>`);
+
+  parts.push(`</svg>`);
+  return parts.join("\n");
+}
+
+function renderText(sheet, records) {
+  const lines = [];
+  const nameOf = new Map(records.map((r) => [r.id, r]));
+  lines.push("  key".padEnd(22) + "value".padEnd(20) + "setter".padEnd(12) + "conf".padEnd(8) + "effect");
+  lines.push("  " + "-".repeat(74));
+  for (const c of sheet.cells) {
+    const v = JSON.stringify(c.value);
+    const setter = c.setter ? (nameOf.get(c.setter)?.kind ?? "?") : "-";
+    const eff = c.contested ? `${c.dependsOn.length - 1} contested` : "settled";
+    lines.push("  " + c.key.slice(0, 20).padEnd(22) + v.slice(0, 18).padEnd(20) +
+      String(setter).slice(0, 10).padEnd(12) +
+      (c.confidence * 100).toFixed(0).padStart(3) + "%  " + eff +
+      (c.fragile ? "  <-- FRAGILE" : ""));
+  }
+  return lines.join("\n");
+}
+
+/* --------------------------------------------------------------- *
+ * FROM src/triggers.mjs   (uses affectedCells, propagateClassChange,
+ *                          GATE -- all inlined above)
+ * --------------------------------------------------------------- */
+function regionConfidence(sheet, recordId) {
+  const cells = affectedCells(sheet, recordId);
+  if (!cells.length) return { confidence: 1.0, cells: [], reason: "the action touches no contested cell" };
+  const confidence = Math.min(...cells.map((c) => c.confidence));
+  return {
+    confidence,
+    cells: cells.map((c) => c.key),
+    weakest: cells.slice().sort((a, b) => a.confidence - b.confidence)[0],
+    reason: "the weakest cell the action would touch",
+  };
+}
+
+function decide({ actionScore, action, sheet, threshold = GATE, fragileThreshold = 0.75 }) {
+  const region = regionConfidence(sheet, action);
+  const touchesFragile = region.cells.some((k) => sheet.byKey[k]?.fragile);
+
+  // The bar for the action rises when it lands on an uncertain cell.
+  const required = touchesFragile ? Math.max(threshold, fragileThreshold) : threshold;
+
+  const apply = actionScore >= required;
+  const binding = apply
+    ? (region.confidence < threshold ? "the cell confidence" : "the action's own score")
+    : (actionScore < required ? "the action's own score" : "the cell confidence");
+
+  return {
+    apply,
+    actionScore,
+    required,
+    region,
+    touchesFragile,
+    binding,
+    why:
+      `action score ${actionScore?.toFixed(2)} against a required ${required.toFixed(2)}; ` +
+      `the cells it touches are at ${region.confidence.toFixed(2)}` +
+      (touchesFragile ? ", and one of them is fragile, so the bar is raised" : "") +
+      `. The binding constraint is ${binding}.`,
+  };
+}
+
+function effectsOf({ action, sheet, records }) {
+  const changes = propagateClassChange(sheet, action, "other");
+  const touched = new Set(changes.map((c) => c.key));
+  return {
+    changes: changes.map((c) => ({
+      key: c.key,
+      kind: c.effect,                 // value-changes | certainty-changes
+      from: c.currentValue,
+      to: c.currentSetter,
+      confidence: c.currentConfidence,
+    })),
+    untouched: sheet.cells.filter((c) => !touched.has(c.key)).map((c) => c.key),
+    summary:
+      `${changes.filter((c) => c.effect === "value-changes").length} cell(s) change value, ` +
+      `${changes.filter((c) => c.effect === "certainty-changes").length} change certainty only, ` +
+      `${sheet.cells.length - touched.size} untouched.`,
+  };
+}
+
+/* --------------------------------------------------------------- *
+ * FROM src/guards.mjs
+ * --------------------------------------------------------------- */
+const GATE = 0.5;
+const NEAR_THRESHOLD = [0.3, 0.7];
+
+function stateIsUsable(state) {
+  if (state === null || state === undefined) return { usable: false, reason: "state is missing" };
+  if (typeof state === "string") {
+    return state.trim().length > 0
+      ? { usable: true }
+      : { usable: false, reason: "state is an empty string" };
+  }
+  if (typeof state === "object") {
+    const keys = Object.keys(state);
+    if (keys.length === 0) return { usable: false, reason: "state is an empty object" };
+    const nonEmpty = Object.values(state).some((v) => {
+      if (v === null || v === undefined) return false;
+      if (typeof v === "string") return v.trim().length > 0;
+      if (Array.isArray(v)) return v.length > 0;
+      if (typeof v === "object") return Object.keys(v).length > 0;
+      return true;
+    });
+    return nonEmpty
+      ? { usable: true }
+      : { usable: false, reason: "every value in the state is empty" };
+  }
+  return { usable: false, reason: `state is a ${typeof state}, which the judge does not accept` };
+}
+
+function hasQuantity(statement) {
+  return /\b\d[\d.eE+-]*\b|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|zero)\b/i.test(statement);
+}
+
+function isAggregateClaim(statement) {
+  return /\b(all|every|each|none|most|some|two|three|four|five|six|seven|eight|nine|ten|\d+)\b[^.]*\b(record|records|key|keys|value|values|item|items)\b/i.test(statement)
+    || /\b(count|number of|how many|total)\b/i.test(statement);
+}
+
+function adjudicate(scores, claimsById) {
+  const out = [];
+  for (const [id, score] of scores) {
+    const claim = claimsById?.[id];
+    const statement = claim?.statement ?? "";
+    if (score === undefined || score === null) {
+      out.push({ id, score: null, status: "no-score", reason: "the judge returned no answer" });
+      continue;
+    }
+    if (isAggregateClaim(statement)) {
+      out.push({ id, score, status: "unreliable", reason: "aggregate claim: counting is ambiguous in this judge" });
+      continue;
+    }
+    if (hasQuantity(statement)) {
+      out.push({ id, score, status: "unreliable", reason: "claim contains a quantity: a number the document only IMPLIES lands in the ambiguous band, so it is not gated on directly" });
+      continue;
+    }
+    if (score >= NEAR_THRESHOLD[0] && score <= NEAR_THRESHOLD[1]) {
+      out.push({ id, score, status: "needs-isolation", reason: `score is within ${NEAR_THRESHOLD} of the gate` });
+      continue;
+    }
+    out.push({
+      id, score,
+      status: score > GATE ? "supported" : "not-supported",
+      reason: score > GATE ? "the document explicitly states it" : "the document does not state it",
+    });
+  }
+  return out;
+}
+
+/* --- exported from guards.mjs and NOT inlined here (async / needs a
+   judge), referenced only so the trigger panel can report them:
+       detectContradiction(state, jevFn) -> needs a judge, not a browser
+       CONTRADICTION_FLOOR (0.7) -- the value is inlined as CONTRADICTION_FLOOR
+       ------------------------------------------------------------------ */
+const CONTRADICTION_FLOOR = 0.7;
+
+/* ================================================================== *
+ * PART 2 -- THE EXPLORER. Everything below is presentation and
+ * input handling. It calls the library; it never re-implements it.
+ * ================================================================== */
+(function () {
+
+/* ---------- the sample payload ---------------------------------
+ * Produced by running the library for real, not hand-written:
+ *
+ *   node make-sample.mjs
+ *     const {derive}      = await import("gitpp-js/src/gitpp.js")
+ *     const {buildSheet}  = await import("src/sheet.mjs")
+ *     const {buildClaimSet} = await import("src/claims.mjs")
+ *     const {scoreClaimsGuarded} = await import("src/jev.mjs")
+ *     const fold   = derive(RECORDS)            // the live-demo record set
+ *     const {claims} = buildClaimSet(RECORDS, fold)
+ *     const g      = await scoreClaimsGuarded(claims, {spec: SPEC_MD}, {})
+ *     const sheet  = buildSheet(fold, Object.fromEntries(g.scores), {})
+ *
+ * The `scores` below are live Jev (TypeSafe AI) readings of
+ * git.pp SPEC.md, so every confidence, verdict and trigger verdict
+ * on this page is the library's real output.
+ * ---------------------------------------------------------------- */
+const SAMPLE = {
+  "_note": "generated by running src/*.mjs against the live-demo record set; scores are real Jev (TypeSafe AI) readings of git.pp SPEC.md",
+  "records": [
+    {
+      "id": "req-1",
+      "kind": "task",
+      "parents": [],
+      "effects": {
+        "config.timeout": 30,
+        "status": "open"
+      }
+    },
+    {
+      "id": "req-2",
+      "kind": "override",
+      "parents": [
+        "req-1"
+      ],
+      "effects": {
+        "config.timeout": 45
+      }
+    },
+    {
+      "id": "obs-1",
+      "kind": "witness",
+      "parents": [
+        "req-1"
+      ],
+      "effects": {
+        "config.timeout": 60,
+        "env.load": 17
+      }
+    },
+    {
+      "id": "twin-a",
+      "kind": "task",
+      "parents": [
+        "req-1"
+      ],
+      "effects": {
+        "cache.ttl": 5
+      }
+    },
+    {
+      "id": "twin-b",
+      "kind": "task",
+      "parents": [
+        "req-1"
+      ],
+      "effects": {
+        "cache.ttl": 9
+      }
+    },
+    {
+      "id": "unknown",
+      "kind": "weird",
+      "parents": [
+        "req-1"
+      ],
+      "effects": {
+        "cache.ttl": 1
+      }
+    },
+    {
+      "id": "lost",
+      "kind": "task",
+      "parents": [
+        "gone"
+      ],
+      "effects": {
+        "never": 1
+      }
+    }
+  ],
+  "fold": {
+    "state": {
+      "config.timeout": 45,
+      "status": "open",
+      "env.load": 17,
+      "cache.ttl": 5
+    },
+    "setters": {
+      "config.timeout": "req-2",
+      "status": "req-1",
+      "env.load": "obs-1",
+      "cache.ttl": "twin-a"
+    },
+    "order": [
+      "req-1",
+      "obs-1",
+      "req-2",
+      "twin-a",
+      "twin-b",
+      "unknown"
+    ],
+    "conflicts": [
+      {
+        "key": "config.timeout",
+        "winner": "req-2",
+        "losers": [
+          "req-1",
+          "obs-1"
+        ]
+      },
+      {
+        "key": "cache.ttl",
+        "winner": "twin-a",
+        "losers": [
+          "twin-b",
+          "unknown"
+        ]
+      }
+    ],
+    "orphans": [
+      "lost"
+    ]
+  },
+  "claims": [
+    {
+      "id": "config.timeout:req-2:req-1",
+      "key": "config.timeout",
+      "winner": "req-2",
+      "loser": "req-1",
+      "winnerKind": "override",
+      "loserKind": "task",
+      "decision": "class-precedence",
+      "statement": "In the git.pp specification, a record of kind \"override\" outranks a record of kind \"task\" for the same key.",
+      "clause": "SPEC 5.1: class precedence is absolute -- override > task > witness"
+    },
+    {
+      "id": "config.timeout:req-2:obs-1",
+      "key": "config.timeout",
+      "winner": "req-2",
+      "loser": "obs-1",
+      "winnerKind": "override",
+      "loserKind": "witness",
+      "decision": "class-precedence",
+      "statement": "In the git.pp specification, a record of kind \"override\" outranks a record of kind \"witness\" for the same key.",
+      "clause": "SPEC 5.1: class precedence is absolute -- override > task > witness"
+    },
+    {
+      "id": "cache.ttl:twin-a:twin-b",
+      "key": "cache.ttl",
+      "winner": "twin-a",
+      "loser": "twin-b",
+      "winnerKind": "task",
+      "loserKind": "task",
+      "decision": "tie-break",
+      "statement": "In the git.pp specification, when two records of the same class contest the same key, the one that is a DESCENDANT of the other wins; and if neither descends from the other, the one that comes first in topological order wins.",
+      "clause": "SPEC 5.2 step 3: if the classes are equal, a descendant wins; and 5.4: ties are broken by smallest-id-first"
+    },
+    {
+      "id": "cache.ttl:twin-a:unknown",
+      "key": "cache.ttl",
+      "winner": "twin-a",
+      "loser": "unknown",
+      "winnerKind": "task",
+      "loserKind": "weird",
+      "decision": "class-precedence",
+      "statement": "In the git.pp specification, a record of kind \"task\" outranks a record of kind \"weird\" for the same key.",
+      "clause": "SPEC 5.1: class precedence is absolute -- override > task > witness"
+    },
+    {
+      "id": "prop:unknown:kind",
+      "record": "unknown",
+      "kind": "class",
+      "statement": "A record whose kind is \"weird\" has no class and ranks lowest, below witness.",
+      "clause": "SPEC 5.1: class precedence is absolute; an unclassifiable record ranks lowest"
+    }
+  ],
+  "scores": {
+    "config.timeout:req-2:req-1": 0.98,
+    "config.timeout:req-2:obs-1": 0.97,
+    "cache.ttl:twin-a:unknown": 0.03,
+    "cache.ttl:twin-a:twin-b": 0.74,
+    "prop:unknown:kind": 0.05
+  },
+  "priors": {},
+  "verdicts": [
+    {
+      "id": "config.timeout:req-2:req-1",
+      "score": 0.98,
+      "status": "supported",
+      "reason": "the document explicitly states it"
+    },
+    {
+      "id": "config.timeout:req-2:obs-1",
+      "score": 0.97,
+      "status": "supported",
+      "reason": "the document explicitly states it"
+    },
+    {
+      "id": "cache.ttl:twin-a:unknown",
+      "score": 0.03,
+      "status": "not-supported",
+      "reason": "the document does not state it"
+    },
+    {
+      "id": "cache.ttl:twin-a:twin-b",
+      "score": 0.74,
+      "status": "unreliable",
+      "reason": "aggregate claim: counting is ambiguous in this judge"
+    },
+    {
+      "id": "prop:unknown:kind",
+      "score": 0.05,
+      "status": "not-supported",
+      "reason": "the document does not state it"
+    }
+  ],
+  "contradiction": {
+    "contradictory": false,
+    "score": 0.42
+  },
+  "sheet": {
+    "cells": [
+      {
+        "key": "cache.ttl",
+        "value": 5,
+        "setter": "twin-a",
+        "confidence": 0.03,
+        "decisions": [
+          {
+            "kind": "class-precedence",
+            "subject": "twin-a > twin-b",
+            "confidence": 0.74,
+            "detail": "for key \"cache.ttl\""
+          },
+          {
+            "kind": "class-precedence",
+            "subject": "twin-a > unknown",
+            "confidence": 0.03,
+            "detail": "for key \"cache.ttl\""
+          }
+        ],
+        "dependsOn": [
+          "twin-a",
+          "twin-b",
+          "unknown"
+        ],
+        "contested": true,
+        "fragile": true
+      },
+      {
+        "key": "config.timeout",
+        "value": 45,
+        "setter": "req-2",
+        "confidence": 0.97,
+        "decisions": [
+          {
+            "kind": "class-precedence",
+            "subject": "req-2 > req-1",
+            "confidence": 0.98,
+            "detail": "for key \"config.timeout\""
+          },
+          {
+            "kind": "class-precedence",
+            "subject": "req-2 > obs-1",
+            "confidence": 0.97,
+            "detail": "for key \"config.timeout\""
+          }
+        ],
+        "dependsOn": [
+          "req-2",
+          "req-1",
+          "obs-1"
+        ],
+        "contested": true,
+        "fragile": false
+      },
+      {
+        "key": "env.load",
+        "value": 17,
+        "setter": "obs-1",
+        "confidence": 1,
+        "decisions": [],
+        "dependsOn": [
+          "obs-1"
+        ],
+        "contested": false,
+        "fragile": false
+      },
+      {
+        "key": "status",
+        "value": "open",
+        "setter": "req-1",
+        "confidence": 1,
+        "decisions": [],
+        "dependsOn": [
+          "req-1"
+        ],
+        "contested": false,
+        "fragile": false
+      }
+    ]
+  }
+};
+
+/* ---------- dom ------------------------------------------------ */
+const $ = (s) => document.querySelector(s);
+const el = (t, a = {}, kids = []) => {
+  const n = document.createElement(t);
+  for (const [k, v] of Object.entries(a)) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else if (k === "html") n.innerHTML = v;
+    else if (k === "style") n.setAttribute("style", v);
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of [].concat(kids)) if (c != null) n.append(c);
+  return n;
+};
+const escHtml = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const SVGNS = "http://www.w3.org/2000/svg";
+const FRAGILE_THRESHOLD = 0.75;   // the default fragileThreshold decide() uses
+
+/* ---------- state ---------------------------------------------- */
+const S = {
+  ok: false,
+  records: [], byId: new Map(),
+  fold: null, sheet: null,
+  claims: [], claimsById: Object.create(null),
+  scores: Object.create(null), priors: Object.create(null),
+  verdicts: [], contradiction: null, state: null, note: "",
+  selRecord: null, selCell: null,
+  actionScore: 0.55,
+  sort: "weak",
+  nodeEls: [], edgeEls: [],
+};
+
+/* ---------- small helpers -------------------------------------- */
+const pct = (x) => (x * 100).toFixed(0) + "%";
+const num = (x, d = 2) => (typeof x === "number" && isFinite(x) ? x.toFixed(d) : String(x ?? "-"));
+const shortVal = (v) => {
+  const s = typeof v === "string" ? JSON.stringify(v) : JSON.stringify(v);
+  return s === undefined ? "undefined" : s.length > 26 ? s.slice(0, 25) + "…" : s;
+};
+const classOf = (r) => (r && r.kind && CLASS_COLOR[r.kind] ? r.kind : "unclassifiable");
+const kindColor = (id) => {
+  const r = S.byId.get(id);
+  return CLASS_COLOR[classOf(r)];
+};
+const confClass = (c) => (c >= FRAGILE_THRESHOLD ? "c-hi" : c >= GATE ? "c-mid" : "c-lo");
+const numClass = (c) => (c >= FRAGILE_THRESHOLD ? "hi" : c >= GATE ? "mid" : "lo");
+
+/** A confidence bar with the two thresholds drawn ON the track, so
+ *  "this cell is below the gate" is a picture and not an arithmetic. */
+function bar(c, opts = {}) {
+  const n = el("div", { class: "bar " + confClass(c), title: `confidence ${num(c)} · GATE ${GATE} · fragile <${FRAGILE_THRESHOLD}` });
+  n.append(el("i", { class: "fill", style: `width:${Math.max(0, Math.min(1, c)) * 100}%` }));
+  if (opts.ticks !== false) {
+    n.append(el("i", { class: "tick gate", style: `left:${GATE * 100}%` }));
+    n.append(el("i", { class: "tick frag", style: `left:${FRAGILE_THRESHOLD * 100}%` }));
+  }
+  return n;
+}
+function barNum(c) {
+  return el("span", { class: "barnum " + numClass(c) }, [el("b", { text: num(c) })]);
+}
+function chip(id) {
+  const r = S.byId.get(id);
+  const c = kindColor(id);
+  return el("span", { class: "chip", style: `color:${c}`, title: id }, [
+    el("span", { class: "sw" }),
+    el("span", { text: id == null ? "—" : id }),
+    r && r.kind ? el("span", { class: "dim", text: "(" + r.kind + ")" }) : null,
+  ]);
+}
+function banner(kind, title, msg) {
+  const b = $("#banner");
+  b.className = "banner " + kind;
+  b.hidden = false;
+  b.innerHTML = "";
+  b.append(el("span", { class: "bh", text: title }), el("span", { html: msg }));
+}
+const hideBanner = () => { const b = $("#banner"); b.hidden = true; b.textContent = ""; };
+
+/** Run a panel renderer; a throw inside one panel must not blank the page. */
+function guard(name, sel, fn) {
+  const host = $(sel);
+  try { fn(); }
+  catch (e) {
+    console.error(name, e);
+    if (host) host.append(el("div", { class: "banner err", style: "margin:10px" },
+      [el("span", { class: "bh", text: "the " + name + " panel failed to render" }),
+       el("span", { text: (e && e.message) || String(e) })]));
+  }
+}
+
+/* ================================================================== *
+ * PAYLOAD -> STATE
+ * ================================================================== */
+
+/**
+ * Accepts the two shapes a caller realistically has:
+ *   { records, sheet:{cells} }                  -- a sheet someone else built
+ *   { records, fold, scores|claims, priors }    -- raw material
+ * and normalises both into S. Throws Error with a readable message on
+ * anything it cannot use; the caller turns that into a banner.
+ */
+function load(payload) {
+  if (payload === null || payload === undefined) throw new Error("payload is null");
+  if (typeof payload !== "object" || Array.isArray(payload))
+    throw new Error("payload must be a JSON object; got " + (Array.isArray(payload) ? "an array" : typeof payload));
+
+  if (!Array.isArray(payload.records))
+    throw new Error("no `records` array — every payload needs the record set it describes");
+  const records = payload.records.filter((r) => r && typeof r === "object" && typeof r.id === "string");
+  if (!records.length)
+    throw new Error(`records[] has ${payload.records.length} entr(ies) but none has a string \`id\``);
+
+  const scores = payload.scores && typeof payload.scores === "object" ? payload.scores : Object.create(null);
+  const priors = payload.priors && typeof payload.priors === "object" ? payload.priors : Object.create(null);
+
+  // Fold: given, or synthesised from the sheet so triggers still work.
+  let fold = payload.fold && typeof payload.fold === "object" ? payload.fold : null;
+
+  // Sheet: prefer the caller's, else build it with buildSheet().
+  let sheet = null;
+  const pasted = payload.sheet;
+  if (pasted && Array.isArray(pasted.cells) && pasted.cells.length) {
+    sheet = { cells: pasted.cells, byKey: Object.fromEntries(pasted.cells.map((c) => [c.key, c])) };
+    // A pasted sheet is trusted for cells but normalised so nothing downstream
+    // has to defend against a missing field.
+    for (const c of sheet.cells) {
+      if (!Array.isArray(c.dependsOn)) c.dependsOn = c.setter == null ? [] : [c.setter];
+      if (!Array.isArray(c.decisions)) c.decisions = [];
+      if (typeof c.confidence !== "number") c.confidence = 1;
+      if (typeof c.contested !== "boolean") c.contested = c.dependsOn.length > 1;
+      if (typeof c.fragile !== "boolean") c.fragile = c.confidence < FRAGILE_THRESHOLD;
+    }
+    if (!fold) fold = foldFromSheet(sheet);
+  } else {
+    if (!fold) throw new Error(
+      "need either `sheet.cells` (a sheet someone already built) or `fold.state` " +
+      "(raw fold output, which buildSheet() will turn into one). Neither is present.");
+    sheet = buildSheet(fold, scores, priors);     // <- src/sheet.mjs
+  }
+
+  // Claims: given, or extracted from the fold with buildClaimSet().
+  const claims = Array.isArray(payload.claims) && payload.claims.length
+    ? payload.claims
+    : (fold ? buildClaimSet(records, fold).claims : []);   // <- src/claims.mjs
+  const claimsById = Object.create(null);
+  for (const c of claims) claimsById[c.id] = c;
+
+  // Verdicts: recomputed with the library so the panel can never disagree
+  // with the numbers the sheet was built from. A payload that ships
+  // `verdicts` but no `scores` is honoured as-is.
+  let verdicts;
+  const scoreEntries = Object.entries(scores);
+  if (scoreEntries.length) verdicts = adjudicate(scoreEntries, claimsById);   // <- src/guards.mjs
+  else if (Array.isArray(payload.verdicts)) verdicts = payload.verdicts;
+  else verdicts = [];
+
+  S.ok = true;
+  S.records = records;
+  S.byId = new Map(records.map((r) => [r.id, r]));
+  S.fold = fold; S.sheet = sheet;
+  S.claims = claims; S.claimsById = claimsById;
+  S.scores = scores; S.priors = priors; S.verdicts = verdicts;
+  S.contradiction = payload.contradiction ?? null;
+  S.state = payload.state ?? payload.spec ?? null;
+  S.note = typeof payload._note === "string" ? payload._note : "";
+}
+
+/** The fold fields a pasted sheet does not carry, rebuilt from cells. */
+function foldFromSheet(sheet) {
+  const state = {}, setters = {}, conflicts = [];
+  for (const c of sheet.cells) {
+    state[c.key] = c.value;
+    if (c.setter != null) setters[c.key] = c.setter;
+    const losers = (c.dependsOn || []).filter((d) => d !== c.setter);
+    if (c.contested || losers.length) conflicts.push({ key: c.key, winner: c.setter, losers });
+  }
+  const order = [];
+  for (const c of sheet.cells) for (const d of c.dependsOn || []) if (!order.includes(d)) order.push(d);
+  return { state, setters, conflicts, order, orphans: [] };
+}
+
+/* ================================================================== *
+ * RENDER: stats
+ * ================================================================== */
+function renderStats() {
+  const host = $("#stats"); host.textContent = "";
+  if (!S.ok) return;
+  const sh = S.sheet;
+  const frag = fragileCells(sh);                                   // <- src/sheet.mjs
+  const worst = sheetConfidence(sh);                               // <- src/sheet.mjs
+  const bad = S.verdicts.filter((v) => v.status === "unreliable" || v.status === "needs-isolation").length;
+  const stat = (label, value, cls) =>
+    el("span", { class: "stat" + (cls ? " " + cls : "") }, [label + " ", el("b", { text: String(value) })]);
+
+  host.append(
+    stat("records", S.records.length),
+    stat("cells", sh.cells.length),
+    stat("sheet conf", pct(worst), worst < FRAGILE_THRESHOLD ? "red" : "green"),
+    stat("fragile", frag.length, frag.length ? "amber" : ""),
+    stat("claims", S.claims.length),
+    stat("not gateable", bad, bad ? "amber" : ""),
+  );
+  if (S.contradiction && typeof S.contradiction.score === "number") {
+    host.append(stat("contradiction", num(S.contradiction.score), S.contradiction.contradictory ? "red" : ""));
+  }
+  if (S.state !== null) {
+    const u = stateIsUsable(S.state);                             // <- src/guards.mjs
+    host.append(stat("state", u.usable ? "usable" : "UNUSABLE", u.usable ? "" : "red"));
+  }
+}
+
+/* ================================================================== *
+ * RENDER: the graph  (svg produced by src/graph.mjs, then wired up)
+ * ================================================================== */
+function graphHeight() {
+  // renderGraph lays one 90px layer per DAG depth; this mirrors that so the
+  // legend strip is not drawn on top of the last layer. Layout only -- the
+  // nodes themselves are renderGraph's.
+  const ids = new Set(S.records.map((r) => r.id));
+  const depth = new Map();
+  const d = (id, seen = new Set()) => {
+    if (depth.has(id)) return depth.get(id);
+    if (seen.has(id)) return 0;
+    seen.add(id);
+    const r = S.byId.get(id);
+    const ps = (r?.parents ?? []).filter((p) => ids.has(p));
+    const v = ps.length ? 1 + Math.max(...ps.map((p) => d(p, seen))) : 0;
+    depth.set(id, v); return v;
+  };
+  for (const r of S.records) d(r.id);
+  const maxD = Math.max(0, ...[...depth.values()]);
+  return Math.max(210, 60 + 90 * (maxD + 1) + 52);
+}
+
+function renderGraphPanel() {
+  const wrap = $("#graphwrap");
+  wrap.textContent = "";
+  S.nodeEls = []; S.edgeEls = [];
+  if (!S.ok) return;
+
+  const width = Math.max(420, Math.floor(wrap.clientWidth || 700) - 16);
+  const svgText = renderGraph(S.sheet, S.records, { width, height: graphHeight() });  // <- src/graph.mjs
+  wrap.innerHTML = svgText;
+  const svg = wrap.querySelector("svg");
+  if (!svg) return;
+  // Keep renderGraph's own viewBox, let it scale to the panel width.
+  svg.removeAttribute("height");
+  svg.setAttribute("width", "100%");
+  svg.style.height = "auto"; svg.style.display = "block";
+
+  const q = (sel, attr, val) => [...svg.querySelectorAll(sel)]
+    .filter((n) => n.getAttribute(attr) === val);
+  const circles = q("circle", "r", "17");
+  const halos = q("circle", "r", "26");
+  const labels = q("text", "font-size", "10");
+  const confs = q("text", "font-size", "9");
+  const lines = [...svg.querySelectorAll("line")];
+
+  // renderGraph emits one r=17 circle per record, in `records` order, so the
+  // zip is positional. If a future version ever drops that, wire nothing up
+  // rather than wire up the wrong thing.
+  if (circles.length === S.records.length) {
+    S.records.forEach((r, i) => {
+      const c = circles[i];
+      const halo = halos.find((h) => h.getAttribute("cx") === c.getAttribute("cx")
+        && h.getAttribute("cy") === c.getAttribute("cy")) || null;
+      const title = document.createElementNS(SVGNS, "title");
+      title.textContent = nodeTitle(r);
+      c.append(title);
+      c.addEventListener("click", () => selectRecord(r.id, "graph"));
+      c.addEventListener("mouseenter", () => hover(r.id));
+      c.addEventListener("mouseleave", () => hover(null));
+      S.nodeEls.push({ id: r.id, circle: c, halo, label: labels[i] || null, conf: confs[i] || null });
+    });
+  }
+
+  // Same for edges: renderGraph emits them parent->child in record order,
+  // skipping parents that are not in the record set.
+  const ids = new Set(S.records.map((r) => r.id));
+  const edges = [];
+  for (const r of S.records)
+    for (const p of r.parents ?? [])
+      if (ids.has(p)) edges.push({ from: p, to: r.id });
+  if (edges.length === lines.length) {
+    edges.forEach((e, i) => {
+      const on = () => lines[i].setAttribute("stroke", "#7fd1ff");
+      const off = () => lines[i].setAttribute("stroke", lines[i].getAttribute("stroke-dasharray") ? "#3a3f4b" : "#4a5160");
+      lines[i].style.cursor = "pointer";
+      lines[i].addEventListener("mouseenter", on);
+      lines[i].addEventListener("mouseleave", off);
+      lines[i].addEventListener("click", () => selectRecord(e.to, "graph"));
+      S.edgeEls.push({ ...e, line: lines[i] });
+    });
+  }
+  paintGraphFocus();
+}
+
+function nodeTitle(r) {
+  const set = S.sheet.cells.filter((c) => c.setter === r.id);
+  const lost = S.sheet.cells.filter((c) => c.setter !== r.id && (c.dependsOn || []).includes(r.id));
+  const bits = [`kind ${r.kind ?? "null"}`, `parents ${(r.parents ?? []).join(",") || "—"}`];
+  bits.push(set.length ? `sets ${set.map((c) => c.key + " @" + pct(c.confidence)).join(", ")}` : "sets nothing");
+  if (lost.length) bits.push(`lost ${lost.map((c) => c.key).join(", ")}`);
+  return bits.join("\n");
+}
+
+let hoverId = null;
+function hover(id) {
+  hoverId = id;
+  paintReadout();
+}
+
+function paintReadout() {
+  const out = $("#graphreadout");
+  const id = hoverId || S.selRecord;
+  if (!id || !S.byId.has(id)) {
+    out.innerHTML = "hover a node &middot; click to select";
+    return;
+  }
+  const r = S.byId.get(id);
+  const set = S.sheet.cells.filter((c) => c.setter === id);
+  const lost = S.sheet.cells.filter((c) => c.setter !== id && (c.dependsOn || []).includes(id));
+  const region = regionConfidence(S.sheet, id);                     // <- src/triggers.mjs
+  out.innerHTML =
+    `<b style="color:${kindColor(id)}">${escHtml(id)}</b> &middot; kind <b>${escHtml(String(r.kind ?? "null"))}</b>` +
+    ` &middot; parents ${escHtml((r.parents ?? []).join(", ") || "—")}` +
+    ` &middot; children ${escHtml(S.records.filter((x) => (x.parents ?? []).includes(id)).map((x) => x.id).join(", ") || "—")}` +
+    `<br>set ${set.length ? escHtml(set.map((c) => `${c.key} @ ${pct(c.confidence)}`).join(", ")) : "nothing"}` +
+    ` &middot; lost ${lost.length ? escHtml(lost.map((c) => `${c.key} to ${c.setter}`).join(", ")) : "nothing"}` +
+    ` &middot; region ${pct(region.confidence)} <span class="dim">(${escHtml(region.reason)})</span>`;
+}
+
+/** Dim everything not connected to the current focus. */
+function focusIds() {
+  const sh = S.sheet;
+  if (S.selCell && sh.byKey[S.selCell]) return new Set(sh.byKey[S.selCell].dependsOn || []);
+  if (S.selRecord) {
+    const s = new Set([S.selRecord]);
+    for (const r of S.records) if ((r.parents ?? []).includes(S.selRecord)) s.add(r.id);
+    for (const r of S.records) if ((r.parents ?? []).includes(r.id)) for (const p of r.parents) s.add(p);
+    return s;
+  }
+  return new Set();
+}
+
+function paintGraphFocus() {
+  const focus = focusIds();
+  const on = focus.size > 0;
+  for (const n of S.nodeEls) {
+    const lit = !on || focus.has(n.id);
+    n.circle.setAttribute("opacity", lit ? "1" : "0.22");
+    n.circle.setAttribute("stroke", n.id === S.selRecord ? "#ffffff" : "#0f1115");
+    n.circle.setAttribute("stroke-width", n.id === S.selRecord ? "2.5" : "2");
+    if (n.halo) n.halo.setAttribute("opacity", lit ? "1" : "0.22");
+    if (n.label) n.label.setAttribute("opacity", lit ? "1" : "0.25");
+    if (n.conf) n.conf.setAttribute("opacity", lit ? "1" : "0.25");
+  }
+  for (const e of S.edgeEls) {
+    const lit = !on || focus.has(e.from) || focus.has(e.to);
+    e.line.setAttribute("opacity", lit ? "1" : "0.13");
+    e.line.setAttribute("stroke-width", lit ? "1.8" : "1.2");
+  }
+}
+
+/* ================================================================== *
+ * RENDER: the sheet
+ * ================================================================== */
+function sortedCells() {
+  const cs = S.sheet.cells.slice();
+  if (S.sort === "key") return cs;                       // buildSheet's own order
+  if (S.sort === "strong") return cs.sort((a, b) => b.confidence - a.confidence);
+  return cs.sort((a, b) => a.confidence - b.confidence); // weakest first
+}
+
+function renderSheet() {
+  const host = $("#sheetbody"); host.textContent = "";
+  if (!S.ok) return;
+  const cells = sortedCells();
+  const frag = fragileCells(S.sheet).length;
+  $("#sheetcount").textContent =
+    `${cells.length} cells · ${frag} fragile · worst ${pct(sheetConfidence(S.sheet))}`;
+
+  const tb = el("tbody");
+  for (const c of cells) {
+    const participants = (c.dependsOn || []).includes(S.selRecord);
+    const cls = [];
+    if (c.fragile) cls.push("frag");
+    if (c.confidence < GATE) cls.push("lo");
+    if (S.selCell === c.key) cls.push("sel");
+    else if (participants) cls.push("hit");
+    const tr = el("tr", {
+      class: cls.join(" "), tabindex: "0", "data-key": c.key,
+      title: c.decisions.length
+        ? c.decisions.length + " decision(s); confidence is the MINIMUM of them"
+        : "no decision touched this cell, so it is certain",
+      onclick: () => selectCell(c.key),
+      onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectCell(c.key); } },
+    });
+
+    // key
+    tr.append(el("td", {}, [
+      el("div", { style: "font-weight:600", text: c.key }),
+      c.contested
+        ? el("div", { class: "dim", style: "font-size:10.5px", text: `${(c.dependsOn || []).length - 1} contested` })
+        : el("div", { class: "dim", style: "font-size:10.5px", text: "settled" }),
+    ]));
+
+    // value
+    tr.append(el("td", { class: "val" }, [
+      shortVal(c.value),
+      (c.dependsOn || []).length > 1
+        ? el("div", { class: "from", style: "font-size:10.5px", text: "vs " + (c.dependsOn || []).filter((d) => d !== c.setter).join(", ") })
+        : null,
+    ]));
+
+    // setter, in its class colour
+    tr.append(el("td", {}, [c.setter ? chip(c.setter) : el("span", { class: "none", text: "no setter" })]));
+
+    // confidence as a BAR, with GATE and the fragile threshold drawn on it
+    tr.append(el("td", {}, [el("div", { class: "confcell" }, [bar(c.confidence), barNum(c.confidence)])]));
+
+    // the decisions, weakest link marked (confidence is a MINIMUM, not a mean)
+    const decs = el("td", {}, [c.decisions.length ? el("div", { class: "dec" },
+      c.decisions.map((d) => {
+        const claimId = claimIdFor(c, d);
+        const v = claimId ? S.verdicts.find((x) => x.id === claimId) : null;
+        const weak = c.decisions.length > 1 && d.confidence === Math.min(...c.decisions.map((x) => x.confidence));
+        return el("div", {
+          class: "decline" + (weak ? " weak" : ""),
+          title: `${d.kind} · ${d.detail}` + (v ? `\nverdict: ${v.status} — ${v.reason}` : "") + "\nclick to highlight the verdict",
+          onclick: (e) => { e.stopPropagation(); flashVerdict(claimId); },
+          style: claimId ? "cursor:pointer" : "",
+        }, [
+          el("span", { class: "subj", text: d.subject }),
+          el("span", { class: "dim", style: "font-size:10.5px", text: d.kind === "class-precedence" ? "" : "(prior)" }),
+          barNum(d.confidence),
+          v ? el("span", { class: "st " + v.status, style: "font-size:9px", text: v.status }) : null,
+        ]);
+      })) : el("span", { class: "none", text: "no uncertain decision" })]);
+    tr.append(decs);
+
+    // fragile / contested flag
+    tr.append(el("td", {}, [
+      c.fragile ? el("span", { class: "tag amber", text: "FRAGILE" })
+                : el("span", { class: "tag dim", text: "ok" }),
+    ]));
+
+    tb.append(tr);
+  }
+
+  if (!cells.length) {
+    host.append(el("div", { class: "empty",
+      text: "This payload has records but no cells: the fold produced an empty state, so there is nothing to be uncertain about." }));
+    return;
+  }
+
+  const tbl = el("table", {}, [
+    el("thead", {}, [el("tr", {}, [
+      el("th", { style: "width:17%", text: "key" }),
+      el("th", { style: "width:14%", text: "value" }),
+      el("th", { style: "width:15%", text: "setter" }),
+      el("th", { style: "width:23%", text: "confidence" }),
+      el("th", { text: "decisions that produced it" }),
+      el("th", { style: "width:8%", text: "state" }),
+    ])]),
+    tb,
+  ]);
+  host.append(tbl);
+}
+
+/** The claim a decision came from, by the id buildSheet looks up. */
+function claimIdFor(cell, d) {
+  if (!d || d.kind !== "class-precedence") return null;
+  const parts = String(d.subject).split(" > ");
+  if (parts.length !== 2) return null;
+  const id = `${cell.key}:${parts[0]}:${parts[1]}`;
+  return S.claimsById[id] ? id : (S.scores[id] !== undefined ? id : null);
+}
+
+/* ---------- cell detail ---------------------------------------- */
+function renderCellDetail() {
+  const host = $("#celldetail"); host.textContent = "";
+  const c = S.selCell && S.sheet.byKey[S.selCell];
+  if (!c) {
+    host.append(el("div", { class: "readout", html: "click a row to see the decision chain: cell &rarr; decision &rarr; claim &rarr; clause &rarr; verdict" }));
+    return;
+  }
+  const d = el("div", { class: "detail" });
+  d.append(el("div", { class: "dh" }, [
+    el("span", { class: "k", text: c.key }),
+    el("span", { class: "val", text: "= " + shortVal(c.value) }),
+    c.setter ? chip(c.setter) : el("span", { class: "none", text: "no setter" }),
+    el("span", { style: "display:flex;align-items:center;gap:2px" }, [bar(c.confidence), barNum(c.confidence)]),
+    c.fragile ? el("span", { class: "tag amber", text: "FRAGILE" }) : el("span", { class: "tag dim", text: "settled" }),
+  ]));
+
+  if (!c.decisions.length) {
+    d.append(el("div", { class: "foot", style: "border:none;padding:2px 0 0",
+      text: "No decision touched this cell, so buildSheet gives it confidence 1.00 — certain, even if every record involved was scored 0.7." }));
+    host.append(d); return;
+  }
+
+  const min = Math.min(...c.decisions.map((x) => x.confidence));
+  d.append(el("div", { class: "foot", style: "border:none;padding:2px 0 7px",
+    text: `cell confidence ${num(c.confidence)} = the MINIMUM of ${c.decisions.length} decision(s). A mean would hide one uncertain decision behind the rest.` }));
+
+  for (const dec of c.decisions) {
+    const id = claimIdFor(c, dec);
+    const claim = id ? S.claimsById[id] : null;
+    const v = id ? S.verdicts.find((x) => x.id === id) : null;
+    const weak = c.decisions.length > 1 && dec.confidence === min;
+    const card = el("div", { class: "claim " + (v ? v.status : "") });
+    card.append(el("div", { class: "ch" }, [
+      el("span", { style: "color:" + (weak ? "var(--amber)" : "var(--muted)"), text: weak ? "◆ weakest link" : "◇" }),
+      el("b", { text: dec.subject }),
+      barNum(dec.confidence),
+      claim ? el("span", { class: "clause", text: claim.clause }) : el("span", { class: "clause", text: "no claim in the payload" }),
+      v ? el("span", { class: "st " + v.status, text: v.status }) : null,
+    ]));
+    if (claim) card.append(el("div", { class: "cst", text: "“" + claim.statement + "”" }));
+    if (v) card.append(el("div", { class: "rsn dim", text: v.reason }));
+    else card.append(el("div", { class: "rsn dim",
+      text: id ? "no verdict for this claim id" : "buildSheet defaults an unchallenged comparison to 1.00" }));
+    d.append(card);
+  }
+  host.append(d);
+}
+
+function flashVerdict(claimId) {
+  if (!claimId) return;
+  const row = document.querySelector(`#verdbody [data-claim="${CSS.escape(claimId)}"]`);
+  if (!row) return;
+  document.querySelectorAll("#verdbody .vrow.on").forEach((n) => n.classList.remove("on"));
+  row.classList.add("on");
+  row.scrollIntoView({ block: "nearest" });
+}
+
+/* ================================================================== *
+ * RENDER: selection panel
+ * ================================================================== */
+function renderSelection() {
+  const host = $("#selbody"); host.textContent = "";
+  const id = S.selRecord;
+  const r = id ? S.byId.get(id) : null;
+  $("#selwho").textContent = r ? `${id} · ${r.kind ?? "null"}` : "no record selected";
+
+  if (!r) {
+    host.append(el("div", { class: "empty",
+      text: "Click a node in the graph, or a row in the sheet, to see what a record touched and what would change if its class were different." }));
+    return;
+  }
+  const kids = S.records.filter((x) => (x.parents ?? []).includes(id)).map((x) => x.id);
+  host.append(el("div", { class: "rec-head" }, [
+    chip(id),
+    el("span", { class: "kids", text: `parents ${(r.parents ?? []).join(", ") || "—"} · children ${kids.join(", ") || "—"}` }),
+    (S.fold?.orphans || []).includes(id) ? el("span", { class: "tag red", text: "ORPHAN — excluded from the fold" }) : null,
+  ]));
+
+  const set = S.sheet.cells.filter((c) => c.setter === id);
+  const lost = S.sheet.cells.filter((c) => c.setter !== id && (c.dependsOn || []).includes(id));
+
+  host.append(sectionTable("cells it SET", set, (c) => [
+    el("td", { style: "cursor:pointer", onclick: () => selectCell(c.key) }, [el("b", { text: c.key })]),
+    el("td", { class: "val", text: shortVal(c.value) }),
+    el("td", {}, [bar(c.confidence), barNum(c.confidence)]),
+  ]));
+
+  host.append(sectionTable("cells it LOST", lost, (c) => [
+    el("td", { style: "cursor:pointer", onclick: () => selectCell(c.key) }, [el("b", { text: c.key })]),
+    el("td", { class: "muted", text: "to " + c.setter }),
+    el("td", {}, [bar(c.confidence), barNum(c.confidence)]),
+  ]));
+
+  // ---- effectsOf: the point of the panel -------------------------
+  const eff = effectsOf({ action: id, sheet: S.sheet, records: S.records });   // <- src/triggers.mjs
+  host.append(el("div", { class: "sec" }, [
+    el("div", { class: "h" }, [
+      "if its class were different — effectsOf()",
+      el("span", { class: "n", text: eff.summary }),
+    ]),
+  ]));
+
+  const val = eff.changes.filter((c) => c.kind === "value-changes");
+  const cer = eff.changes.filter((c) => c.kind === "certainty-changes");
+
+  host.append(effBlock("v", "changes VALUE", val.length,
+    "there is a decision of the form `this record > someone`, so it WINS the contest and a class change could hand the key away",
+    val, (c) => el("li", { style: "cursor:pointer", onclick: () => selectCell(c.key) }, [
+      el("b", { text: c.key }), ` ${shortVal(c.from)} `,
+      el("span", { class: "dim", text: "beats " + (S.sheet.byKey[c.key].dependsOn || []).filter((d) => d !== id).join(", ") }),
+    ])));
+
+  host.append(effBlock("c", "changes CERTAINTY only", cer.length,
+    "no `this record > someone` decision on the cell: either it lost the contest (the value stands, but the cell rests on evidence it can no longer support) or nobody contested the cell, so there is no comparison to lose",
+    cer, (c) => {
+      const cell = S.sheet.byKey[c.key];
+      const alone = cell && cell.setter === id;
+      return el("li", { style: "cursor:pointer", onclick: () => selectCell(c.key) }, [
+        el("b", { text: c.key }), ` ${shortVal(c.from)} `,
+        el("span", { class: "dim", text: alone ? "sole setter, uncontested" : "lost to " + c.to }),
+      ]);
+    }));
+
+  host.append(el("div", { class: "eff u" }, [
+    el("div", { class: "eh" }, [
+      el("span", { text: "UNTOUCHED" }),
+      el("span", { style: "color:var(--dim)", text: `${eff.untouched.length} of ${S.sheet.cells.length} cells` }),
+    ]),
+    eff.untouched.length
+      ? el("div", { class: "dim", style: "word-break:break-word", text: eff.untouched.join("  ") })
+      : el("div", { class: "dim", text: "none — this record is in the dependency set of every cell" }),
+  ]));
+
+  host.append(el("div", { class: "foot" },
+    "Reading effectsOf() honestly: propagateClassChange() takes a newClass and never reads it, so this is the " +
+    "DEPENDENCY set split by kind, not a re-fold. `to` is the record's CURRENT setter and `confidence` the " +
+    "CURRENT confidence — the library tells you which cells are at stake and whether the value or only the " +
+    "certainty moves, and deliberately does not guess the new value."));
+}
+
+function sectionTable(title, rows, rowCells) {
+  return el("div", { class: "sec" }, [
+    el("div", { class: "h" }, [title, el("span", { class: "n", text: String(rows.length) })]),
+    rows.length
+      ? el("table", { class: "mini" }, [el("tbody", {}, rows.map((c) => el("tr", {}, rowCells(c))))])
+      : el("div", { class: "dim", text: "none" }),
+  ]);
+}
+function effBlock(kind, title, n, why, rows, rowFn) {
+  return el("div", { class: "eff " + kind }, [
+    el("div", { class: "eh" }, [
+      el("span", { text: title }),
+      el("span", { style: "color:var(--dim)", text: String(n) }),
+    ]),
+    el("div", { class: "dim", style: "font-size:10.5px;margin-bottom:5px", text: why }),
+    rows.length
+      ? el("ul", {}, rows.map(rowFn))
+      : el("div", { class: "dim", text: "— none —" }),
+  ]);
+}
+
+/* ================================================================== *
+ * RENDER: trigger -- decide() verbatim, no re-implementation
+ * ================================================================== */
+function renderTrigger() {
+  const host = $("#trigbody"); host.textContent = "";
+  if (!S.ok) return;
+
+  if (!S.selRecord || !S.byId.has(S.selRecord)) {
+    host.append(el("div", { class: "empty",
+      html: `Select a record to run the gate on it. <code>decide()</code> takes the action's own score and the sheet; ` +
+            `the gate alone cannot see what the action touches.` }));
+    return;
+  }
+
+  const v = el("div", { class: "verdict" }, [
+    el("span", { class: "big", "data-ref": "verdict", text: "—" }),
+    el("span", { class: "exp", "data-ref": "explain" }),
+  ]);
+  host.append(v);
+
+  const rng = el("input", {
+    type: "range", min: "0", max: "1", step: "0.01", value: String(S.actionScore),
+    id: "scoreRange", "aria-label": "the action's own score",
+    oninput: (e) => { S.actionScore = Number(e.target.value); paintTrigger(); },
+  });
+  const numBox = el("input", {
+    type: "number", min: "0", max: "1", step: "0.01", value: num(S.actionScore),
+    "data-ref": "scorenum",
+    style: "width:74px;background:#0c0e12;border:1px solid var(--line);border-radius:4px;color:var(--text);padding:2px 6px;font:inherit",
+    oninput: (e) => {
+      const n = Number(e.target.value);
+      if (!isFinite(n)) return;
+      S.actionScore = Math.max(0, Math.min(1, n));
+      const r = $("#scoreRange"); if (r) r.value = String(S.actionScore);
+      paintTrigger();
+    },
+  });
+  host.append(el("div", { style: "display:flex;align-items:center;gap:10px;margin:6px 0 2px" }, [
+    el("span", { class: "muted", text: "action score" }), numBox,
+    el("span", { class: "dim", style: "font-size:11px", text: "— the confidence the judge gives the PROPOSED ACTION, not the cell" }),
+  ]));
+  host.append(el("div", { class: "sl", "data-ref": "sl" }, [rng]));
+  host.append(el("div", { class: "slmark", "data-ref": "marks" }));
+  host.append(el("div", { class: "slnums" }, [
+    el("span", { text: "0.00" }), el("span", { text: "0.50 = GATE" }),
+    el("span", { text: "0.75 = fragile threshold" }), el("span", { text: "1.00" }),
+  ]));
+
+  host.append(el("div", { class: "kv" }, [
+    el("span", { class: "k", text: "action" }),
+    el("span", { "data-ref": "act" }),
+    el("span", { class: "k", text: "touches" }),
+    el("span", { "data-ref": "touch" }),
+    el("span", { class: "k", text: "region conf" }),
+    el("span", { "data-ref": "region" }),
+    el("span", { class: "k", text: "required" }),
+    el("span", { "data-ref": "req" }),
+    el("span", { class: "k", text: "binding" }),
+    el("span", { "data-ref": "bind" }),
+  ]));
+
+  host.append(el("div", { class: "ladder", "data-ref": "ladder" }));
+
+  host.append(el("div", { class: "why", "data-ref": "why" }));
+  paintTrigger();
+}
+
+/** Updates only text and marker positions, so the slider is never rebuilt
+ *  while it is being dragged. decide() is the sole source of truth. */
+function paintTrigger() {
+  const g = (ref) => document.querySelector(`#trigbody [data-ref="${ref}"]`);
+  if (!g("verdict")) return;
+  const d = decide({                                                  // <- src/triggers.mjs
+    actionScore: S.actionScore,
+    action: S.selRecord,
+    sheet: S.sheet,
+    threshold: GATE,
+    fragileThreshold: FRAGILE_THRESHOLD,
+  });
+
+  // decide() returns a boolean. "review" is the band decide() itself opens up
+  // when the fragile rule raises `required` above the plain GATE -- derived
+  // from decide()'s own two numbers, not a second gate.
+  const state = S.actionScore < GATE ? "block" : (d.apply ? "apply" : "review");
+  const label = { apply: "APPLY", review: "REVIEW", block: "BLOCK" }[state];
+  const big = g("verdict");
+  big.textContent = label;
+  big.className = "big " + state;
+
+  const why = { apply: "clears the required bar", review: "clears GATE but not the raised bar",
+                block: "below the plain gate" }[state];
+  g("explain").innerHTML = state === "review"
+    ? `score ${num(S.actionScore)} is above GATE ${GATE.toFixed(2)} but below the required ${d.required.toFixed(2)} — ${why}`
+    : `score ${num(S.actionScore)} ${why} (required ${d.required.toFixed(2)})`;
+
+  g("act").innerHTML = "";
+  g("act").append(chip(S.selRecord));
+  g("touch").innerHTML = "";
+  if (d.region.cells.length) for (const k of d.region.cells) {
+    g("touch").append(el("span", { class: "pill", style: "margin-right:4px;cursor:pointer",
+      text: k, onclick: () => selectCell(k) }));
+  } else g("touch").append(el("span", { class: "dim", text: "no cell — it set nothing and contested nothing" }));
+
+  const rc = d.region.confidence;
+  g("region").innerHTML = "";
+  g("region").append(bar(rc), barNum(rc), el("span", { class: "dim", style: "font-size:11px", text: " " + d.region.reason }));
+  g("req").innerHTML = "";
+  g("req").append(
+    el("b", { style: "color:" + (d.touchesFragile ? "var(--amber)" : "var(--text)"), text: num(d.required) }),
+    el("span", { class: "dim", style: "font-size:11px", text: d.touchesFragile
+      ? ` raised from GATE ${GATE.toFixed(2)} — the action touches a FRAGILE cell` : " = GATE" }));
+  g("bind").textContent = d.binding;
+
+  // slider track: red below GATE, green above; marks for GATE / required / current
+  const sl = g("sl");
+  sl.style.setProperty("--lo", (GATE * 100) + "%");
+  const marks = g("marks"); marks.textContent = "";
+  marks.append(el("i", { class: "gate", style: `left:${GATE * 100}%`, text: "GATE " + GATE.toFixed(2) }));
+  marks.append(el("i", { class: "req", style: `left:${d.required * 100}%`,
+    text: "required " + d.required.toFixed(2) }));
+  marks.append(el("i", { class: "cur", style: `left:${S.actionScore * 100}%`, text: num(S.actionScore) }));
+
+  const ladder = g("ladder"); ladder.textContent = "";
+  const band = (color, name, range, note, on) =>
+    el("div", { class: on ? "on" : "off" }, [
+      el("span", { class: "sw", style: `background:${color}` }),
+      el("span", { style: `min-width:64px;color:${on ? color : "var(--muted)"}`, text: name }),
+      el("span", { class: "dim", text: range }),
+      el("span", { style: "margin-left:auto;color:" + (on ? "var(--text)" : "var(--dim)"), text: note }),
+    ]);
+  ladder.append(
+    band("var(--red)", "BLOCK", `< ${GATE.toFixed(2)}`, "fails the gate outright", state === "block"),
+    d.touchesFragile
+      ? band("var(--amber)", "REVIEW", `${GATE.toFixed(2)} – ${d.required.toFixed(2)}`,
+             "the counter-intuitive band: enough for the action, not enough for an uncertain cell", state === "review")
+      : null,
+    band("var(--green)", "APPLY", `≥ ${d.required.toFixed(2)}`, "decide() returns apply=true", state === "apply"),
+  );
+
+  g("why").textContent = d.why;
+}
+
+/* ================================================================== *
+ * RENDER: verdicts
+ * ================================================================== */
+const STATUS_KEY = [
+  ["supported", "the document states it; safe to build on"],
+  ["not-supported", "the document does not state it"],
+  ["needs-isolation", "score is within [0.3, 0.7] — near-threshold items must be re-asked ALONE"],
+  ["unreliable", "a guard fired: never gate on this number"],
+  ["no-score", "the judge returned no answer"],
+];
+
+function renderVerdicts() {
+  const host = $("#verdbody"); host.textContent = "";
+  if (!S.ok) return;
+  const vs = S.verdicts;
+  const tally = {};
+  for (const v of vs) tally[v.status] = (tally[v.status] || 0) + 1;
+  $("#verdcount").textContent = vs.length
+    ? `${vs.length} claims adjudicated · ` + Object.keys(tally).map((k) => `${tally[k]} ${k}`).join(" · ")
+    : "no scores in the payload";
+
+  if (!vs.length) {
+    host.append(el("div", { class: "empty",
+      html: "No scores to adjudicate. Paste <code>scores</code> (claimId → 0..1) alongside the records and fold, " +
+            "or ship <code>verdicts</code>, and the claims will be run through <code>adjudicate()</code> here." }));
+  }
+
+  for (const v of vs) {
+    const claim = S.claimsById[v.id] || null;
+    const row = el("div", { class: "vrow k-" + v.status, "data-claim": v.id, tabindex: "0",
+      onclick: () => jumpToClaim(v.id),
+      onkeydown: (e) => { if (e.key === "Enter") jumpToClaim(v.id); } });
+    row.append(el("div", { class: "st " + v.status, text: v.status }));
+    row.append(el("div", { class: "id" }, [
+      el("b", { text: claim ? (claim.key ?? claim.record ?? v.id) : v.id }),
+      claim && claim.decision ? el("span", { class: "dim", text: "  " + claim.decision }) : null,
+      el("span", { class: "dim", text: "  " + v.id }),
+    ]));
+    row.append(el("div", {}));
+    row.append(el("div", { class: "sc" }, [
+      bar(typeof v.score === "number" ? v.score : 0, { ticks: true }),
+      barNum(typeof v.score === "number" ? v.score : 0),
+    ]));
+    if (claim) row.append(el("div", { class: "stmt", text: "“" + claim.statement + "”" }));
+    row.append(el("div", { class: "rsn", text: v.reason }));
+    host.append(row);
+  }
+
+  host.append(el("div", { class: "vkey" }, STATUS_KEY.map(([k, v]) =>
+    el("span", { class: "sk s-" + k }, [el("b", { text: k }), " — " + v]))));
+}
+
+function jumpToClaim(id) {
+  const c = S.claimsById[id];
+  if (!c) return;
+  if (c.key && S.sheet.byKey[c.key]) { selectCell(c.key); return; }
+  if (c.record && S.byId.has(c.record)) { selectRecord(c.record, "verdict"); return; }
+  const row = document.querySelector(`#verdbody [data-claim="${CSS.escape(id)}"]`);
+  if (row) { row.classList.add("on"); row.scrollIntoView({ block: "nearest" }); }
+}
+
+/* ================================================================== *
+ * SELECTION
+ * ================================================================== */
+function renderAll() {
+  renderStats();
+  guard("graph",   "#graphwrap",   renderGraphPanel);
+  guard("sheet",   "#sheetbody",   renderSheet);
+  guard("cell detail", "#celldetail", renderCellDetail);
+  guard("selection", "#selbody",   renderSelection);
+  guard("trigger", "#trigbody",    renderTrigger);
+  guard("verdicts", "#verdbody",   renderVerdicts);
+  paintReadout();
+}
+
+/** `from` is where the click came from; only a graph click clears the cell,
+ *  so that picking a record in the graph does not wipe the cell detail. */
+function selectRecord(id, from) {
+  if (from === "graph") S.selCell = null;
+  S.selRecord = S.byId.has(id) ? id : null;
+  renderAll();
+}
+function selectCell(key) {
+  S.selCell = S.sheet.byKey[key] ? key : null;
+  const c = S.sheet.byKey[key];
+  if (c && c.setter) S.selRecord = c.setter;      // sheet -> graph, the other direction
+  renderAll();
+  const row = document.querySelector(`#sheetbody [data-key="${CSS.escape(key)}"]`);
+  if (row) row.scrollIntoView({ block: "nearest" });
+}
+function clearSelection() {
+  S.selRecord = null; S.selCell = null;
+  renderAll();
+}
+
+/* ================================================================== *
+ * PAYLOAD PLUMBING
+ * ================================================================== */
+let parseTimer = null;
+function onPayloadText(text) {
+  clearTimeout(parseTimer);
+  parseTimer = setTimeout(() => tryParse(text), 250);
+}
+function tryParse(text) {
+  if (!text || !text.trim()) { banner("err", "empty payload", "The textarea is empty. Paste a JSON payload, or press <b>format</b> after loading the sample."); return; }
+  let data;
+  try { data = JSON.parse(text); }
+  catch (e) {
+    const m = (e && e.message) || String(e);
+    banner("err", "malformed JSON — nothing was rendered, the last good view is still up",
+      escHtml(m) + `<br><span style="opacity:.8">Fix the JSON in the payload panel and it will re-render on change. ` +
+      `The sample payload is recoverable from the "payload" button.</span>`);
+    return;
+  }
+  try { load(data); }
+  catch (e) {
+    banner("err", "JSON parsed, but it is not a payload this explorer can read",
+      escHtml((e && e.message) || String(e)) +
+      `<br><span style="opacity:.8">Expected <code>records[]</code> with a string <code>id</code>, plus either ` +
+      `<code>sheet.cells[]</code> or <code>fold.state</code>. Optional: <code>scores</code>, <code>priors</code>, ` +
+      `<code>claims</code>, <code>contradiction</code>, <code>state</code>.</span>`);
+    return;
+  }
+  hideBanner();
+  S.selRecord = null; S.selCell = null;
+  renderAll();
+  const worst = S.sheet.cells.slice().sort((a, b) => a.confidence - b.confidence)[0];
+  if (worst && worst.setter) selectCell(worst.key);
+  else if (S.records.length) selectRecord(S.records[0].id, "init");
+}
+
+/* ---------- wiring --------------------------------------------- */
+function init() {
+  document.querySelectorAll(".sortbtn").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll(".sortbtn").forEach((x) => x.classList.remove("on"));
+      b.classList.add("on");
+      S.sort = b.dataset.sort;
+      renderSheet();
+    });
+  });
+  $("#btnPayload").addEventListener("click", () => {
+    const p = $("#payload");
+    p.hidden = !p.hidden;
+    $("#btnPayload").classList.toggle("on", !p.hidden);
+    if (!p.hidden) $("#ta").focus();
+  });
+  $("#btnClose").addEventListener("click", () => {
+    $("#payload").hidden = true; $("#btnPayload").classList.remove("on");
+  });
+  $("#btnFormat").addEventListener("click", () => {
+    const ta = $("#ta");
+    try {
+      ta.value = JSON.stringify(JSON.parse(ta.value), null, 2);
+      hideBanner();
+    } catch (e) {
+      banner("err", "cannot format", "The textarea does not hold valid JSON: " + escHtml((e && e.message) || String(e)));
+    }
+  });
+  $("#btnText").addEventListener("click", () => {
+    if (!S.ok) { banner("err", "nothing to copy", "Load a payload first."); return; }
+    const txt = renderText(S.sheet, S.records);                       // <- src/graph.mjs
+    const done = () => banner("ok", "renderText() copied",
+      "The same information as a table, for terminals and for diffing in git.");
+    const fail = () => banner("ok", "renderText() — clipboard blocked here, so here it is",
+      "<pre style='margin:0;white-space:pre'>" + escHtml(txt) + "</pre>");
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(done, fail);
+      } else fail();
+    } catch (_) { fail(); }
+  });
+  $("#ta").addEventListener("input", (e) => onPayloadText(e.target.value));
+
+  // Redraw the graph when the panel changes width (renderGraph bakes its
+  // width into the SVG, so it has to be re-rendered, not just stretched).
+  let rt = null;
+  const ro = () => { clearTimeout(rt); rt = setTimeout(() => { if (S.ok) renderGraphPanel(); }, 140); };
+  if (window.ResizeObserver) new ResizeObserver(ro).observe($("#graphwrap"));
+  window.addEventListener("resize", ro);
+  $("#p-graph").addEventListener("click", (e) => {
+    if (e.target.closest("svg") && !e.target.closest("circle") && !e.target.closest("line")) clearSelection();
+  });
+
+  // An unexpected throw anywhere must not leave a blank page.
+  window.addEventListener("error", (e) => {
+    if (e.target && e.target !== window) return;          // a failed subresource
+    banner("err", "unexpected error", escHtml((e.message || "unknown") +
+      (e.filename ? ` (${e.filename}:${e.lineno})` : "")));
+  });
+
+  // Open on the sample.
+  $("#ta").value = JSON.stringify(SAMPLE, null, 2);
+  try { load(SAMPLE); } catch (e) { S.ok = false; }
+  renderAll();
+  if (!S.ok) { banner("err", "the built-in sample failed to load", escHtml("this is a bug in the explorer, not in the payload")); return; }
+  // Start on the record that set the weakest cell: the worklist, in the graph.
+  const worst = S.sheet.cells.slice().sort((a, b) => a.confidence - b.confidence)[0];
+  if (worst && worst.setter) selectCell(worst.key);
+  else if (S.records.length) selectRecord(S.records[0].id, "init");
+  if (S.note) banner("ok", "built-in sample", escHtml(S.note) +
+    `<br><span style="opacity:.8">Paste your own over it in the payload panel.</span>`);
+}
+
+try { init(); }
+catch (e) {
+  const b = document.getElementById("banner");
+  if (b) { b.className = "banner err"; b.hidden = false;
+    b.textContent = "explorer failed to start: " + ((e && e.message) || e); }
+  console.error(e);
+}
+
+})();
+</script>
+</body>
+</html>
