@@ -1,0 +1,10 @@
+{
+  "name": "gitpp-sheet",
+  "version": "0.1.0",
+  "description": "A git.pp fold as a spreadsheet with cell-level confidence, and the graph that shows where the confidence came from",
+  "type": "module",
+  "main": "src/sheet.mjs",
+  "scripts": { "test": "node --test test/sheet.test.mjs", "demo": "node demo.mjs" },
+  "engines": { "node": ">=20" },
+  "license": "MIT"
+}
