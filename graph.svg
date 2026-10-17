@@ -20,11 +20,11 @@
 
 <circle cx="148" cy="150" r="17" fill="#e05252" fill-opacity="0.82" stroke="#0f1115" stroke-width="2"/>
 <text x="148" y="154" font-size="10" fill="#fff" text-anchor="middle">req-2</text>
-<text x="148" y="182" font-size="9" fill="#8b93a1" text-anchor="middle">99%</text>
+<text x="148" y="182" font-size="9" fill="#8b93a1" text-anchor="middle">97%</text>
 
 <circle cx="324" cy="150" r="17" fill="#7b8794" fill-opacity="0.82" stroke="#0f1115" stroke-width="2"/>
 <text x="324" y="154" font-size="10" fill="#fff" text-anchor="middle">obs-1</text>
-<text x="324" y="182" font-size="9" fill="#8b93a1" text-anchor="middle">96%</text>
+<text x="324" y="182" font-size="9" fill="#8b93a1" text-anchor="middle">95%</text>
 
 <circle cx="280" cy="240" r="17" fill="#7b8794" fill-opacity="0.82" stroke="#0f1115" stroke-width="2"/>
 <text x="280" y="244" font-size="10" fill="#fff" text-anchor="middle">obs-2</text>
@@ -40,7 +40,7 @@
 
 <circle cx="676" cy="150" r="17" fill="#4a90d9" fill-opacity="0.82" stroke="#0f1115" stroke-width="2"/>
 <text x="676" y="154" font-size="10" fill="#fff" text-anchor="middle">twin</text>
-<text x="676" y="182" font-size="9" fill="#8b93a1" text-anchor="middle">97%</text>
+<text x="676" y="182" font-size="9" fill="#8b93a1" text-anchor="middle">95%</text>
 
 <circle cx="852" cy="150" r="17" fill="#4a90d9" fill-opacity="0.82" stroke="#0f1115" stroke-width="2"/>
 <text x="852" y="154" font-size="10" fill="#fff" text-anchor="middle">twin2</text>

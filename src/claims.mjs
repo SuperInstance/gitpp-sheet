@@ -83,15 +83,32 @@ export function extractPropertyClaims(records, fold) {
   const orphans = new Set(fold.orphans ?? []);
   const claims = [];
   for (const r of records) {
+    // ONLY unclassifiable records get a property claim.
+    //
+    // The first version of this file asked about EVERY record's class:
+    // "a record whose kind is 'task' is a member of the task class".
+    // That is a TAUTOLOGY, and it is not a sentence the spec contains --
+    // the spec states the PRECEDENCE (override > task > witness), never
+    // that membership means membership. So the judge, asked whether the
+    // document EXPLICITLY states it, correctly answered "no" and scored
+    // it 0.51-0.63.
+    //
+    // That noise then propagated into cell confidence through the
+    // winner's prior. The fix is not to reword the tautology but to
+    // STOP ASKING: a claim that is true by definition carries no
+    // information, so its confidence is 1.0 by construction and needs
+    // no judge. Only the class the spec actually discusses -- the
+    // unclassifiable one -- is worth a question.
+    const unclassifiable = r.kind === null || r.kind === undefined ||
+      !(r.kind in { override: 1, task: 1, witness: 1 });
+    if (!unclassifiable) continue;
     claims.push({
       id: `prop:${r.id}:kind`,
       record: r.id,
       kind: "class",
       statement:
-        `In the git.pp specification, a record whose kind is "${r.kind}" ` +
-        (r.kind === null || r.kind === undefined
-          ? `has no class and ranks lowest, below witness.`
-          : `is a member of the ${r.kind} class.`),
+        `A record whose kind is ${r.kind === null || r.kind === undefined ? "null" : `"${r.kind}"`} ` +
+        `has no class and ranks lowest, below witness.`,
       clause: "SPEC 5.1: class precedence is absolute; an unclassifiable record ranks lowest",
     });
     if (orphans.has(r.id)) {
