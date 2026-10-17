@@ -6,7 +6,7 @@
 // The point of the last step: the gate asks "should we apply this
 // action?" and the sheet asks "what does it touch, and how sure are we
 // of that?". Neither alone is enough.
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 
 const JS_SRC = process.env.GITPP_JS_SRC || "/tmp/rr2/readers/js/fold.mjs";
 const SPEC_PATH = process.env.GITPP_SPEC || "/tmp/v046d/SPEC.md";
@@ -86,5 +86,15 @@ console.log();
 const eff = effectsOf({ action: "req-2", sheet, records });
 console.log(`  EFFECTS of changing req-2: ${eff.summary}`);
 for (const c of eff.changes) console.log(`    ${c.key.padEnd(16)} ${c.kind.padEnd(20)} ${JSON.stringify(c.from)} -> ${JSON.stringify(c.to)}`);
+// The output directory has to EXIST. It did not, and the job died with
+//
+//   Error: ENOENT: no such file or directory, open '/tmp/sheet/live-graph.svg'
+//
+// on the very last line of the whole pipeline -- after the claims had
+// been scored, the sheet built, the triggers fired and the effects
+// computed. Every real step had succeeded and the job was still RED,
+// because writing an artifact is not optional once you have promised
+// to write one.
+mkdirSync("/tmp/sheet", { recursive: true });
 writeFileSync("/tmp/sheet/live-graph.svg", renderGraph(sheet, records));
 console.log("\n  wrote /tmp/sheet/live-graph.svg");
