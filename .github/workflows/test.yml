@@ -1,0 +1,49 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  sheet:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm test
+
+  # The live pipeline: a real fold, real claims, and a real judge.
+  #
+  # This is a SEPARATE job from the unit tests on purpose. The unit tests
+  # must not depend on a network service, because a flaky third party
+  # must not be able to turn a real defect into a red build -- and
+  # equally, a green unit suite must not be mistaken for evidence that
+  # the integration works.
+  #
+  # The live job is what catches a change in the JUDGE's behaviour, or
+  # in the spec the claims are read against.
+  live:
+    runs-on: ubuntu-latest
+    needs: sheet
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: clone the reference port and the spec
+        run: |
+          git clone --depth 1 https://github.com/SuperInstance/git.pp-doctor ../gitpp-doctor
+          git clone --depth 1 -b spec/5-1-clarity https://github.com/SuperInstance/git.pp-spec ../gitpp-spec
+      - name: run the live pipeline
+        env:
+          TYPESAFE_AI_TOKEN: ${{ secrets.TYPESAFE_AI_TOKEN }}
+          GITPP_DOCTOR_DIR: ${{ github.workspace }}/../gitpp-doctor
+          GITPP_SPEC: ${{ github.workspace }}/../gitpp-spec/SPEC.md
+        run: node live-demo.mjs

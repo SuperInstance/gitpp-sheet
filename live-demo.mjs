@@ -6,7 +6,7 @@
 // The point of the last step: the gate asks "should we apply this
 // action?" and the sheet asks "what does it touch, and how sure are we
 // of that?". Neither alone is enough.
-import { derive } from "/tmp/rr2/readers/js/fold.mjs";
+import { derive } from process.env.GITPP_JS_SRC || "/tmp/rr2/readers/js/fold.mjs";
 import { buildSheet, sheetConfidence, fragileCells } from "./src/sheet.mjs";
 import { buildClaimSet } from "./src/claims.mjs";
 import { scoreClaimsGuarded } from "./src/jev.mjs";
@@ -29,7 +29,7 @@ const records = [
 
 const fold = derive(records);
 const { claims } = buildClaimSet(records, fold);
-const spec = readFileSync("/tmp/v046d/SPEC.md", "utf8");
+const spec = readFileSync(process.env.GITPP_SPEC || "/tmp/v046d/SPEC.md", "utf8");
 
 console.log("  FOLD");
 console.log(`    state     ${JSON.stringify(fold.state)}`);
