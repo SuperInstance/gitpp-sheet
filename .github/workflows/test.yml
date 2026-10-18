@@ -68,3 +68,32 @@ jobs:
           GITPP_JS_SRC: ${{ github.workspace }}/../gitpp-js/src/gitpp.js
           GITPP_SPEC: ${{ github.workspace }}/../gitpp-spec/SPEC.md
         run: node live-demo.mjs
+
+  # The question graph against the REAL judge.
+  #
+  # A separate job from the unit suite for the same reason as `live`:
+  # the unit suite must not need the network, and a green unit suite
+  # must not be mistaken for evidence that the integration works.
+  #
+  # The assertion is about the PIPELINE, not about the scores. A live
+  # judge is a network service with measured noise -- borderline scores
+  # move by 0.037 -- so pinning a number would make this job a coin
+  # flip. What must hold is that the pipeline RAN, that it produced
+  # observations, that the ledger round-trips, and that a derived
+  # question can be answered from the ledger with no judge call.
+  live-graph:
+    runs-on: ubuntu-latest
+    needs: sheet
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: clone the spec
+        run: git clone --depth 1 -b spec/5-1-clarity https://github.com/SuperInstance/git.pp-spec ../gitpp-spec
+      - name: run the question graph against the real judge
+        env:
+          TYPESAFE_AI_TOKEN: ${{ secrets.TYPESAFE_AI_TOKEN }}
+          GITPP_SPEC: ${{ github.workspace }}/../gitpp-spec/SPEC.md
+        run: node live-graph.mjs
