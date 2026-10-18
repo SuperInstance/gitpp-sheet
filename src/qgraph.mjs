@@ -78,6 +78,107 @@ export function stateHash(state) {
   return "sha256:" + createHash("sha256").update(s).digest("hex").slice(0, 32);
 }
 
+// ---------------------------------------------------------------------
+// THE CORPUS: a document OR a paid expert's answer
+// ---------------------------------------------------------------------
+//
+// Until now a question was "read against" a DOCUMENT, and the hash of
+// that document was the correlation key. That is one kind of corpus and
+// it is not the only kind.
+//
+// Put an API to a cloud service in a cell and it can do the job for a
+// price. What it gives back is not a score -- it is TEXT. And text is
+// what has to survive, because the point of the ledger is that a later
+// question can be answered from what was already paid for.
+//
+// So a state whose `expert` key is set is a SECOND KIND OF CORPUS:
+//
+//   {expert: {id, model, endpoint}, ask?}
+//
+// and the correlation key stops being "which document" and becomes
+// "which document OR which expert". Those are counted SEPARATELY and
+// never averaged together -- see `correlation()` in ledger.mjs -- because
+// five questions answered by the same expert are five readings of ONE
+// EXPERT, exactly as five questions over one document are five readings
+// of ONE DOCUMENT, and they fail in different ways when the witness is
+// wrong.
+//
+// This is NOT distillation. Distillation trains a smaller model on the
+// expert's weights. This asks the expert once, pays for it, and keeps the
+// ANSWER -- so the professional sets the standard and a small model (or a
+// rule engine) can later re-derive the same result from the ledger, with
+// no new call and no new cost.
+
+/** Which kind of corpus a state names. Never both, never neither. */
+export const CORPORA = ["document", "expert"];
+
+/**
+ * Is this state a NAMED EXPERT rather than a document?
+ *
+ * The marker is deliberately narrow: an object carrying a non-null
+ * `expert` key. A document that merely happens to contain a key called
+ * `expert` would be misread, which is why `defineGraph` then insists
+ * the descriptor is well formed.
+ */
+export function isExpertState(state) {
+  return !!(state && typeof state === "object" && !Array.isArray(state)
+    && state.expert !== undefined && state.expert !== null);
+}
+
+/**
+ * The expert descriptor of a state, or null for a document.
+ *
+ * The descriptor is NORMALISED, so `{expert: {id: "a"}}` and
+ * `{expert: {id: "a", model: undefined}}` are the same expert -- two
+ * callers describing one witness must not manufacture two.
+ */
+export function expertOf(state) {
+  if (!isExpertState(state)) return null;
+  const e = state.expert;
+  if (typeof e === "string") return { id: e, model: null, endpoint: null };
+  if (typeof e !== "object" || Array.isArray(e)) return null;
+  return {
+    id: e.id ?? null,
+    model: e.model ?? null,
+    endpoint: e.endpoint ?? null,
+  };
+}
+
+/**
+ * The correlation key of an EXPERT: WHO it is, not WHAT it was asked.
+ *
+ * This is the load-bearing detail. Two different questions sent to the
+ * same expert with different request text are still TWO READINGS OF ONE
+ * EXPERT, so the request must NOT enter this hash -- if it did, the
+ * correlation count would silently become a count of REQUESTS, and every
+ * question would look like its own independent witness. That is exactly
+ * the failure the document count was invented to prevent.
+ */
+export function expertHash(expert) {
+  const e = expertOf({ expert });
+  if (!e) return null;
+  return stateHash({ id: e.id, model: e.model, endpoint: e.endpoint });
+}
+
+/**
+ * Which corpus is this, and refuse one that cannot be counted.
+ *
+ * An expert with no `id` is an expert nobody can name, and an unnamed
+ * expert cannot be told apart from a different unnamed expert -- so the
+ * correlation count would be a lie with nothing to catch it. Refuse it
+ * at DEFINITION time, the same way an empty state is refused.
+ */
+export function assertCorpusIsWellFormed(state, where) {
+  if (!isExpertState(state)) return "document";
+  const e = expertOf(state);
+  if (!e || typeof e.id !== "string" || !e.id.trim()) {
+    fail(`${where} names an expert with no usable id. An expert nobody can ` +
+      `name is not a witness: two unnamed experts cannot be told apart, so ` +
+      `the correlation count would be a lie with nothing to catch it.`);
+  }
+  return "expert";
+}
+
 function fail(msg) {
   const e = new Error(msg);
   e.name = "GraphError";
@@ -116,6 +217,12 @@ export function defineGraph(spec) {
            `from the judge's own beliefs at ~0.6, which is indistinguishable from ` +
            `a confident reading of a document.`);
     }
+    // WHICH CORPUS. A question is read against a document or against a
+    // NAMED EXPERT, and the two are counted separately -- so the choice
+    // is made once, here, at definition time, and never re-decided per
+    // call. An expert nobody can name is refused here rather than
+    // counted later.
+    q.corpus = assertCorpusIsWellFormed(q.state, `question ${q.id}`);
     // The kind is DERIVED from the text by the measured rules, and may be
     // overridden -- but the override is recorded, because an override is
     // a place where someone can be wrong.
@@ -289,6 +396,13 @@ export function graphHeader(graph) {
     questions: graph.questions.map((q) => ({
       id: q.id, part: q.part, text: q.text, weight: q.weight,
       kind: q.kind, bindsTo: q.bindsTo, stateHash: stateHash(q.state),
+      // WHICH CORPUS, and WHICH EXPERT. The hash of the state cannot
+      // answer that: it is one opaque fingerprint over either a document
+      // or an expert-plus-request, and a reader of the ledger must be
+      // able to tell those two apart without guessing.
+      corpus: q.corpus ?? (isExpertState(q.state) ? "expert" : "document"),
+      expert: expertOf(q.state),
+      expertHash: expertHash(q.state?.expert),
     })),
     decisions: graph.decisions.map((d) => ({
       id: d.id, part: d.part, requires: d.requires ?? [],
