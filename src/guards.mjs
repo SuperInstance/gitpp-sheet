@@ -179,6 +179,27 @@ export function hasQuantity(statement) {
  * mis-answered; it is that they land ambiguously, and an ambiguous
  * score that occasionally clears a gate is worse than no score.
  */
+/**
+ * A claim about a COUNT is not a safe thing to gate on -- but the FIX
+ * is not only to refuse it.
+ *
+ * Measured: a counting claim sat at 0.511 +/- 0.044 while a
+ * comparable one scored 0.983. The failure is not that counts are
+ * mis-answered; it is that they land ambiguously, and an ambiguous
+ * score that occasionally clears a gate is worse than no score.
+ *
+ * The other agent found the better answer to the same measurement:
+ * "Explicit ANDs are best asked directly. 'm of k' counting goes from
+ * 50-85% decided to 98-100% when decomposed and counted."
+ *
+ * So a count is not gateable AS A COUNT. It is gateable as a set of
+ * per-item questions plus a count over the ANSWERS -- and the answers
+ * to those per-item questions are ordinary atomic claims, which the
+ * judge is good at.
+ *
+ * This guard refuses the aggregate, and the refusal now says what to
+ * do instead: DECOMPOSE.
+ */
 export function isAggregateClaim(statement) {
   return /\b(all|every|each|none|most|some|two|three|four|five|six|seven|eight|nine|ten|\d+)\b[^.]*\b(record|records|key|keys|value|values|item|items)\b/i.test(statement)
     || /\b(count|number of|how many|total)\b/i.test(statement);
@@ -200,7 +221,13 @@ export function adjudicate(scores, claimsById) {
       continue;
     }
     if (isAggregateClaim(statement)) {
-      out.push({ id, score, status: "unreliable", reason: "aggregate claim: counting is ambiguous in this judge" });
+      out.push({
+        id, score, status: "unreliable",
+        reason: "aggregate claim: counting is ambiguous in this judge (measured 0.511 +/- 0.044 " +
+                "against 0.983 for a comparable atomic claim). DECOMPOSE it: ask the per-item " +
+                "questions directly and count the ANSWERS -- measured to move the decided rate " +
+                "from 50-85% to 98-100%. A count is not gateable AS A COUNT.",
+      });
       continue;
     }
     if (hasQuantity(statement)) {

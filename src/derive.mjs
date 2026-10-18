@@ -40,7 +40,8 @@ import { NEAR_THRESHOLD } from "./guards.mjs";
  * Returns the same shape the adjudication path produces, so the two
  * can be compared directly -- which is what the closure test does.
  */
-export function verdictFromLedger(ledger, questionIds, threshold = 0.5) {
+export function verdictFromLedger(ledger, questionIds, threshold = 0.5, opts = {}) {
+  const { sourceThresholds = null } = opts;
   const missing = [];
   const observed = [];
   for (const id of questionIds) {
@@ -95,14 +96,59 @@ export function verdictFromLedger(ledger, questionIds, threshold = 0.5) {
     };
   }
 
+  // PER-SOURCE THRESHOLDS, when the evidence comes from more than one
+  // source.
+  //
+  // Two sources are not interchangeable, so a single threshold cannot
+  // fairly judge both. The other agent measured this: "calibrating Jev
+  // hurt it. For Workers AI, a per-source threshold matched the
+  // isotonic map, so the gate gained source_thresholds."
+  //
+  // So each observation is compared against ITS OWN source's threshold
+  // when the decision supplies one, and the decision passes only if
+  // every source's own comparison passes. With one source, or with no
+  // per-source thresholds, this is exactly the plain threshold.
+  const perSource = [];
+  if (sourceThresholds) {
+    const bySource = new Map();
+    for (const o of observed) {
+      const key = o.source ?? "default";
+      if (!bySource.has(key)) bySource.set(key, []);
+      bySource.get(key).push(o);
+    }
+    for (const [src, group] of bySource) {
+      const t = sourceThresholds[src] ?? threshold;
+      const weakestHere = group.slice().sort((a, b) => a.score - b.score)[0];
+      perSource.push({
+        source: src,
+        threshold: t,
+        confidence: Math.min(...group.map((o) => o.score)),
+        pass: Math.min(...group.map((o) => o.score)) >= t,
+        weakest: weakestHere.q,
+      });
+    }
+  }
+
   // MIN, never a mean and never a weighted mean.
   const confidence = Math.min(...observed.map((o) => o.score));
   const weakest = observed.slice().sort((a, b) => a.score - b.score)[0];
+
+  // The SPREAD of the weakest question, when it has been asked more
+  // than once. A score is a sample, not a constant: measured 0.290 /
+  // 0.360 / 0.370 on three repeats of the same question against the
+  // same document -- a spread of 0.08 -- while the verdict never
+  // moved. So a score sitting near a threshold is uncertain even when
+  // every sample lands on the same side.
+  const spread = Math.max(0, ...observed.map((o) => o.spread ?? 0));
+
   return {
     answerable: true,
     confidence,
     threshold,
-    pass: confidence >= threshold,
+    // With per-source thresholds, EVERY source must clear its OWN bar.
+    pass: perSource.length ? perSource.every((p) => p.pass) : confidence >= threshold,
+    perSource,
+    spread,
     weakest: weakest.q,
     states: distinctStates(ledger, questionIds),
     observations: observed,
@@ -121,7 +167,9 @@ export function verdictFromLedger(ledger, questionIds, threshold = 0.5) {
  */
 export function deriveAnswer(graph, ledger, spec) {
   const questionIds = spec.requires ?? [];
-  const v = verdictFromLedger(ledger, questionIds, spec.threshold ?? 0.5);
+  const v = verdictFromLedger(ledger, questionIds, spec.threshold ?? 0.5, {
+    sourceThresholds: spec.sourceThresholds ?? null,
+  });
   if (!v.answerable) {
     return {
       id: spec.id,
@@ -143,6 +191,8 @@ export function deriveAnswer(graph, ledger, spec) {
     certified: questionIds.length,
     assertedEdges: edges,
     states: v.states,
+    spread: v.spread,
+    perSource: v.perSource,
     observations: v.observations,
     receipt:
       `confidence ${v.confidence.toFixed(2)} against a threshold of ${v.threshold.toFixed(2)}, ` +
@@ -151,7 +201,15 @@ export function deriveAnswer(graph, ledger, spec) {
       `. All of it was read against ${v.states} document(s)` +
       (v.states === 1 && questionIds.length > 1
         ? ` -- so these are ${questionIds.length} readings of ONE document, not ${questionIds.length} independent witnesses.`
-        : "."),
+        : ".") +
+      (v.perSource.length > 1
+        ? ` Judged per source: ` +
+          v.perSource.map((p) => `${p.source} ${p.confidence.toFixed(2)}/${p.threshold.toFixed(2)}`).join(", ") +
+          `.`
+        : "") +
+      (v.spread > 0
+        ? ` The weakest question's score has been observed with a spread of ${v.spread.toFixed(3)} -- a score is a SAMPLE, not a constant.`
+        : ""),
   };
 }
 

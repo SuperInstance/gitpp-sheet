@@ -82,17 +82,82 @@ export function recordObservation(ledger, obs) {
     verdict: obs.verdict ?? null,
     reason: obs.reason ?? null,
     mode: obs.mode ?? "solo",
+    // WHO answered. Two sources are not interchangeable: the other
+    // agent's gate learned this the hard way -- "calibrating Jev hurt
+    // it. For Workers AI, a per-source threshold matched the isotonic
+    // map" -- so a decision whose evidence comes from two sources
+    // cannot compare them on one scale.
+    source: obs.source ?? null,
+    // The SPREAD of the score, when the same question has been asked
+    // more than once against the same evidence.
+    //
+    // A score is a SAMPLE, not a constant. Measured: the same question
+    // against the same document gave 0.290, 0.360, 0.370 on three
+    // repeats -- a spread of 0.08, while the VERDICT never moved. So a
+    // threshold set close to the score is genuinely uncertain even
+    // when every sample lands on the same side of the gate.
+    //
+    // The ledger DERIVES this from its own history rather than asking
+    // the caller to supply it: the ledger is the thing that knows what
+    // it has seen, and a caller that computes the spread for itself
+    // would have to get the comparison key right.
+    spread: null,   // filled in below, once the stateHash is known
     stateHash: obs.stateHash ?? stateHash(state),
     state,
     at: obs.at ?? null,
   };
+  // The spread is computed against the readings of the SAME question
+  // against the SAME document. A different document is a different
+  // measurement, not another sample of this one.
+  const prior = ledger.history.filter(
+    (o) => o.q === rec.q && o.stateHash === rec.stateHash,
+  ).map((o) => o.score);
+  rec.spread = prior.length
+    ? Math.max(...prior, rec.score) - Math.min(...prior, rec.score)
+    : (obs.spread ?? null);
+
   const next = {
     ...ledger,
     observations: new Map(ledger.observations),
     history: [...ledger.history, rec],
   };
+  // THE LATEST READING WINS. Never the best one.
+  //
+  // The other agent found this the hard way: "a path's latest reading
+  // now replaces earlier ones. Keeping the best reading let callers
+  // re-ask until a gate passed."
+  //
+  // That is a way of LAUNDERING A FLAKY JUDGE INTO A CONFIDENT
+  // VERDICT, and it is the single most tempting thing to build: keep
+  // the reading that agrees with you, and the answer stops moving.
+  //
+  // The history keeps EVERY reading, so the spread is recoverable and
+  // the fact that it moved is visible. The current reading is simply
+  // the most recent one.
   next.observations.set(rec.q, rec);
   return next;
+}
+
+/**
+ * Every reading of a question, oldest first.
+ *
+ * The history is not bookkeeping. It is the evidence that a score is
+ * a SAMPLE: measured, the same question against the same document gave
+ * 0.290, 0.360 and 0.370 on three repeats -- a spread of 0.08 -- while
+ * the verdict never moved. A reader who wants to know how firm an
+ * answer is reads this, not the score.
+ */
+export function readingsOf(ledger, questionId) {
+  return ledger.history.filter((o) => o.q === questionId);
+}
+
+/**
+ * The observed spread of a question's score, or 0 if it was asked once.
+ */
+export function spreadOf(ledger, questionId) {
+  const s = readingsOf(ledger, questionId).map((o) => o.score);
+  if (s.length < 2) return 0;
+  return Math.max(...s) - Math.min(...s);
 }
 
 /** The most recent observation of a question, or null. */
@@ -256,6 +321,8 @@ export function toRows(ledger) {
     score: o.score,
     verdict: o.verdict,
     mode: o.mode,
+    source: o.source,
+    spread: o.spread,
     stateHash: o.stateHash,
     at: o.at,
   }));
@@ -281,6 +348,8 @@ export function fromRows(graph, rows) {
       verdict: r.verdict,
       reason: r.reason,
       mode: r.mode,
+      source: r.source,
+      spread: r.spread,
       stateHash: r.stateHash,
       state: q?.state ?? null,
       at: r.at,

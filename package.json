@@ -1,13 +1,13 @@
 {
   "name": "gitpp-sheet",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "A git.pp fold as a spreadsheet with cell-level confidence, and a chain of thought as a graph of questions whose ledger lets a smaller model answer questions nobody asked",
   "type": "module",
   "main": "src/sheet.mjs",
   "scripts": {
-    "test": "node --test test/conform.test.mjs test/guards.test.mjs test/qgraph.test.mjs test/sheet.test.mjs test/triggers.test.mjs",
+    "test": "node --test test/conform.test.mjs test/guards.test.mjs test/ledger2.test.mjs test/qgraph.test.mjs test/sheet.test.mjs test/triggers.test.mjs",
     "demo": "node demo.mjs",
-    "test:all": "node --test test/conform.test.mjs test/guards.test.mjs test/qgraph.test.mjs test/sheet.test.mjs test/triggers.test.mjs"
+    "test:all": "node --test test/conform.test.mjs test/guards.test.mjs test/ledger2.test.mjs test/qgraph.test.mjs test/sheet.test.mjs test/triggers.test.mjs"
   },
   "engines": {
     "node": ">=20"
