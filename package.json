@@ -1,13 +1,13 @@
 {
   "name": "gitpp-sheet",
   "version": "0.1.0",
-  "description": "A git.pp fold as a spreadsheet with cell-level confidence, and the graph that shows where the confidence came from",
+  "description": "A git.pp fold as a spreadsheet with cell-level confidence, the graph that shows where the confidence came from, and a chain of thought as a graph of questions that a smaller model can answer from",
   "type": "module",
   "main": "src/sheet.mjs",
   "scripts": {
-    "test": "node --test test/conform.test.mjs test/guards.test.mjs test/sheet.test.mjs test/triggers.test.mjs",
+    "test": "node --test test/conform.test.mjs test/guards.test.mjs test/qgraph.test.mjs test/sheet.test.mjs test/triggers.test.mjs",
     "demo": "node demo.mjs",
-    "test:all": "node --test test/conform.test.mjs test/guards.test.mjs test/sheet.test.mjs test/triggers.test.mjs"
+    "test:all": "node --test test/conform.test.mjs test/guards.test.mjs test/qgraph.test.mjs test/sheet.test.mjs test/triggers.test.mjs"
   },
   "engines": {
     "node": ">=20"
