@@ -1,7 +1,7 @@
 {
   "name": "gitpp-sheet",
-  "version": "0.1.0",
-  "description": "A git.pp fold as a spreadsheet with cell-level confidence, the graph that shows where the confidence came from, and a chain of thought as a graph of questions that a smaller model can answer from",
+  "version": "0.2.0",
+  "description": "A git.pp fold as a spreadsheet with cell-level confidence, and a chain of thought as a graph of questions whose ledger lets a smaller model answer questions nobody asked",
   "type": "module",
   "main": "src/sheet.mjs",
   "scripts": {
@@ -12,5 +12,45 @@
   "engines": {
     "node": ">=20"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "exports": {
+    ".": "./src/sheet.mjs",
+    "./sheet": "./src/sheet.mjs",
+    "./graph": "./src/graph.mjs",
+    "./qgraph": "./src/qgraph.mjs",
+    "./ledger": "./src/ledger.mjs",
+    "./derive": "./src/derive.mjs",
+    "./script": "./src/script.mjs",
+    "./claims": "./src/claims.mjs",
+    "./guards": "./src/guards.mjs",
+    "./jev": "./src/jev.mjs",
+    "./triggers": "./src/triggers.mjs",
+    "./conform": "./src/conform.mjs"
+  },
+  "files": [
+    "src",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SuperInstance/gitpp-sheet.git"
+  },
+  "homepage": "https://github.com/SuperInstance/gitpp-sheet#readme",
+  "bugs": {
+    "url": "https://github.com/SuperInstance/gitpp-sheet/issues"
+  },
+  "keywords": [
+    "git.pp",
+    "fold",
+    "provenance",
+    "confidence",
+    "spreadsheet",
+    "questions",
+    "ledger",
+    "reproducibility",
+    "audit"
+  ],
+  "author": "SuperInstance"
 }

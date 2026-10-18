@@ -105,3 +105,61 @@ not emit `setters` is legal. Reading only `setters` would produce a
 sheet with null setters, no decisions, and therefore **100% confidence
 on every cell** — certain because it knows nothing, which is worse than
 no sheet at all.
+
+---
+
+## The question graph (v0.2.0)
+
+A chain of thought is ephemeral. It lives in one model's context and is
+gone. The scores that justified it are gone too, so the next question
+starts from nothing even when it is 95% the same question.
+
+This package makes it durable.
+
+```js
+import { defineGraph }      from "gitpp-sheet/qgraph";
+import { createLedger, recordObservation } from "gitpp-sheet/ledger";
+import { deriveAnswer }     from "gitpp-sheet/derive";
+import { runScript }        from "gitpp-sheet/script";
+```
+
+Three things that are usually conflated, kept apart:
+
+| | who can speak to it |
+|---|---|
+| **CERTIFIED** — a question asked of a document, with a verdict | the judge |
+| **ASSERTED** — an edge: "this part depends on that part" | **nobody** — it is authored |
+| **OBSERVED** — the score, the document it was read against, solo or batched | the judge, with provenance |
+
+**The judge reads text; it does not do logic.** It can tell you the document
+states X. It cannot tell you that X therefore Y. So the receipt of a derived
+answer says which is which:
+
+```
+confidence 0.95 … resting on 2 CERTIFIED question(s) and 1 ASSERTED edge(s)
+nobody checked. All of it was read against 1 document(s) -- so these are 2
+readings of ONE document, not 2 independent witnesses.
+```
+
+**The closure property.** A ledger is sufficient: everything a decision's
+verdict depends on is in it, so the verdict reproduces with **no judge call at
+all**. Which means a question *nobody asked* can be answered from the ledger,
+and a small model — or a rule engine — can read the ledger and answer what the
+big model asked.
+
+```js
+const answer = deriveAnswer(graph, ledger, {
+  id: "what-if-the-other-record-had-won",
+  requires: ["q:precedence", "q:contest"],
+  threshold: 0.5,
+  assertedEdges: ["premise -> contest"],
+});
+// answer.receipt says how much is certified and how much is merely asserted
+```
+
+**A bare score is not safe to read.** A false claim scores 0.01 against a
+clean document and 0.86 against one with a contradicting clause appended — same
+number space, invisible in the number. So the ledger stores the *adjudicated*
+observation, and **the right parsing is to read the verdict**.
+
+Full design, with the limits stated: [`docs/question-graph.md`](docs/question-graph.md).
