@@ -1,6 +1,6 @@
 {
   "name": "gitpp-sheet",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A git.pp fold as a spreadsheet with cell-level confidence, and a chain of thought as a graph of questions whose ledger lets a smaller model answer questions nobody asked",
   "type": "module",
   "main": "src/sheet.mjs",
