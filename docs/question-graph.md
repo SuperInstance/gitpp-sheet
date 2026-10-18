@@ -124,6 +124,35 @@ That count is reported *with its caveat*, not as a confidence: three
 documents are better than one only if the three are independent, and
 the graph **asserts** that — it does not verify it.
 
+## The corpus may be a paid expert
+
+The corpus a question is read against is no longer only a document. A
+question's state may name a **professional** behind an API — a model id,
+an endpoint, and the request to put to them — and the observation then
+carries the request, the **answer**, the price and the latency.
+
+The same signal generalises, and it is worth being exact about why:
+
+> **Five questions answered by one expert are five readings of one
+> expert**, exactly as five questions over one document are five
+> readings of one document. An expert is not five witnesses in a
+> trenchcoat — it is one respondent whose priors every answer shares.
+> Asking one expert five times buys a tighter estimate of *one opinion*,
+> not five opinions.
+
+So the count is reported in **two columns, never averaged together** —
+`documents` and `experts` — because a document and an expert are
+different kinds of dependence and combining them would hide which kind is
+carrying the evidence. Both stay **counts**, with the caveat attached,
+and neither is ever turned into a confidence.
+
+The expert's **answer** is kept verbatim, where a judge's score was all
+there was. That is the difference between the two corpora: the number is
+all a judge has, and the text is all the money bought.
+
+Full shape, the two hashes, the sufficiency gate and its measured band:
+**[`docs/EXPERT-CORPUS.md`](EXPERT-CORPUS.md)**.
+
 ## The closure property
 
 The ledger is the durable artifact, and it makes one testable claim:
@@ -222,7 +251,9 @@ Two properties:
   says so.
 - It does not make the observations **independent**. Two questions over
   one document are two readings of one document, and the receipt says
-  so.
+  so. Nor does a paid expert help: two questions answered by one expert
+  are two readings of one expert, and the receipt says that too, in its
+  own column.
 - It does not sharpen the scores. Borderline scores move by 0.037
   regardless of how they were obtained. The design propagates that
   band honestly instead of hiding it.
@@ -234,9 +265,12 @@ Two properties:
 
 | file | what it is |
 |---|---|
-| `src/qgraph.mjs` | parts, questions, weights, decisions; validation |
+| `src/qgraph.mjs` | parts, questions, weights, decisions; validation; the corpus (document or expert) |
 | `src/ledger.mjs` | the durable artifact: observations, provenance, rows |
-| `src/derive.mjs` | derived questions, answered from the ledger alone |
+| `src/derive.mjs` | derived questions, answered from the ledger alone; sufficiency |
 | `src/script.mjs` | the go/no-go scripter |
 | `test/qgraph.test.mjs` | the closure property, and every way the method must not lie |
+| `test/expert.test.mjs` | the same, over a corpus that costs money |
 | `demo-graph.mjs` | the whole loop, with a deterministic mock judge |
+| `demo-expert.mjs` | the whole loop against two experts and one document |
+| `docs/EXPERT-CORPUS.md` | the expert corpus, the correlation signal, sufficiency |

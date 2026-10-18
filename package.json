@@ -5,9 +5,9 @@
   "type": "module",
   "main": "src/sheet.mjs",
   "scripts": {
-    "test": "node --test test/conform.test.mjs test/guards.test.mjs test/ledger2.test.mjs test/qgraph.test.mjs test/sheet.test.mjs test/triggers.test.mjs",
+    "test": "node --test test/conform.test.mjs test/expert.test.mjs test/guards.test.mjs test/ledger2.test.mjs test/qgraph.test.mjs test/sheet.test.mjs test/triggers.test.mjs",
     "demo": "node demo.mjs",
-    "test:all": "node --test test/conform.test.mjs test/guards.test.mjs test/ledger2.test.mjs test/qgraph.test.mjs test/sheet.test.mjs test/triggers.test.mjs"
+    "test:all": "node --test test/conform.test.mjs test/expert.test.mjs test/guards.test.mjs test/ledger2.test.mjs test/qgraph.test.mjs test/sheet.test.mjs test/triggers.test.mjs"
   },
   "engines": {
     "node": ">=20"
